@@ -55,10 +55,15 @@
   #display-reply { color: #b8c8d8; font-weight: 400; }
   #display-text:not(:empty) + #display-reply:not(:empty) { margin-top: 24px; }
   .rendered-media { max-width: 100%; max-height: 70vh; }
+  .static-image { display: inline-flex; flex-direction: column; max-width: 100%;
+    background: #182130; }
   .animated-image { display: inline-flex; flex-direction: column; max-width: 100%;
     white-space: normal; background: #182130; }
-  .animated-image:fullscreen { width: 100%; height: 100%; align-items: center; justify-content: center; }
-  .animated-image:fullscreen canvas { max-height: calc(100vh - 60px); }
+  .static-image:fullscreen, .animated-image:fullscreen { width: 100%; height: 100%; max-width: none;
+    align-items: center; justify-content: center; }
+  .static-image:fullscreen img, .animated-image:fullscreen canvas { flex: 1 1 auto;
+    width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: none; max-height: none;
+    object-fit: contain; }
   .image-controls { display: flex; align-items: center; gap: 8px; padding: 6px;
     width: 100%; font: 14px/1.5 system-ui, sans-serif; }
   .image-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
@@ -113,7 +118,7 @@
       <li><code>text</code>: fills the text field. URL-encode special characters.</li>
       <li><code>reply</code>: fills the Assistant reply field. URL-encode special characters.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
-      <li>Animated images have Play/Pause, frame seeking, and fullscreen controls in a WebCodecs browser such as Chrome/Edge; other browsers show a plain image.</li>
+      <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -236,7 +241,7 @@
         if (element === target || target.contains(element)) dispose();
       }
     }
-    async function enhanceImage(target, fallback, uri) {
+    async function enhanceImage(target, fallback, fallbackViewer, uri) {
       if (!('ImageDecoder' in window)) return;
       let decoder;
       let timer;
@@ -301,8 +306,15 @@
         const position = document.createElement('span');
         const fullscreen = document.createElement('button');
         fullscreen.type = 'button';
-        fullscreen.textContent = 'Fullscreen';
         fullscreen.disabled = typeof requestFullscreen(wrapper) !== 'function';
+        function syncPlayerFullscreen() {
+          const active = fullscreenElement() === wrapper;
+          fullscreen.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
+          fullscreen.setAttribute('aria-pressed', String(active));
+        }
+        document.addEventListener('fullscreenchange', syncPlayerFullscreen, { signal: controller.signal });
+        document.addEventListener('webkitfullscreenchange', syncPlayerFullscreen, { signal: controller.signal });
+        syncPlayerFullscreen();
         controls.append(play, slider, position, fullscreen);
         wrapper.append(canvas, controls);
         function update() {
@@ -313,7 +325,7 @@
         function fallbackImage() {
           if (disposed) return;
           dispose();
-          target.replaceChildren(fallback);
+          target.replaceChildren(fallbackViewer);
         }
         async function draw(index) {
           const request = ++revision;
@@ -370,7 +382,7 @@
           catch (error) { fallbackImage(); }
         });
         fullscreen.addEventListener('click', () => {
-          void changeFullscreen(wrapper);
+          void changeFullscreen(fullscreenElement() === wrapper ? null : wrapper);
         });
         wrapper.addEventListener('click', event => event.stopPropagation());
         wrapper.addEventListener('keydown', event => {
@@ -404,8 +416,25 @@
       } else {
         media.alt = source === 'reply' ? 'Assistant reply image' : 'User text image';
       }
-      target.append(media);
-      if (type === 'image') void enhanceImage(target, media, value.trim());
+      if (type === 'image') {
+        const viewer = document.createElement('div');
+        viewer.className = 'static-image';
+        const controls = document.createElement('div');
+        controls.className = 'image-controls';
+        const fullscreen = document.createElement('button');
+        fullscreen.type = 'button';
+        fullscreen.textContent = 'Toggle fullscreen';
+        fullscreen.disabled = typeof requestFullscreen(viewer) !== 'function';
+        fullscreen.addEventListener('click', () => {
+          void changeFullscreen(fullscreenElement() === viewer ? null : viewer);
+        });
+        controls.append(fullscreen);
+        viewer.append(media, controls);
+        target.append(viewer);
+        void enhanceImage(target, media, viewer, value.trim());
+      } else {
+        target.append(media);
+      }
     }
     let displayedText;
     let displayedReply;
