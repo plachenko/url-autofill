@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URL Autofill · v0.3.3</title>
+<style>
+  :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; }
+  #usage-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
+    height: 16px; background: #10151eee; color: #9cabc0; font: 10px/13px system-ui, sans-serif;
+    text-align: right; padding-right: 8px; pointer-events: none; }
+  #usage-fill { position: absolute; bottom: 0; left: 0; height: 3px; width: 0;
+    background: #6989ac; }
+  main { max-width: 1000px; margin: auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  h1 { font-size: clamp(28px, 5vw, 42px); margin: 0 0 24px; }
+  .version { color: #b8c8e0; white-space: nowrap; }
+  .memory-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+    padding: 10px 12px; margin-bottom: 20px; background: #182130; border-radius: 8px;
+    font-size: 14px; overflow-wrap: anywhere; }
+  .memory-bar button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
+  label { display: block; font-weight: 700; margin-bottom: 8px; }
+  textarea { width: 100%; min-height: 150px; padding: 18px; font: inherit; font-size: 28px;
+    color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 12px; resize: vertical; }
+  label[for="reply"] { margin-top: 16px; }
+  .buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+  button { min-height: 68px; padding: 14px; border: 2px solid #7799cb; border-radius: 12px;
+    font: inherit; font-weight: 700; color: #fff; background: #284e82; cursor: pointer; touch-action: manipulation; }
+  button:active { background: #396eaf; }
+  :focus-visible { outline: 4px solid #ffd976; outline-offset: 4px; }
+  #waiting { padding: 16px; background: #29354a; border-radius: 12px; margin-bottom: 16px; }
+  #cancel { margin: 12px 0 0; background: #75393f; width: 100%; }
+  #status { min-height: 30px; color: #c3dbff; overflow-wrap: anywhere; }
+  #status.error { color: #ffb4b4; }
+  #output { min-height: 130px; padding: 20px; background: #182130; border-radius: 12px;
+    font-size: clamp(36px, 7vw, 72px); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .rendered-reply { margin-top: 20px; padding-top: 16px; border-top: 2px solid #7085a1;
+    color: #b9e4d0; font-size: 0.7em; }
+  details { margin-top: 28px; color: #b8c8e0; font-size: 17px; }
+  summary { cursor: pointer; padding: 14px 0; }
+  code { overflow-wrap: anywhere; color: #e5edff; }
+  li { margin-bottom: 8px; }
+  a { color: #a9ceff; }
+  #page-fullscreen { position: fixed; right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10001;
+    width: 52px; min-height: 52px; padding: 8px; font-size: 26px;
+    color: #b8c8d8; background: #182130e6; border: 1px solid #7085a1; }
+  #minimal-display { display: none; }
+  body.minimal main > :not(#minimal-display) { display: none !important; }
+  body.minimal #minimal-display { display: block; }
+  .plain-text { font-size: clamp(28px, 5vw, 52px); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .plain-text:empty { display: none; }
+  #display-reply { color: #b8c8d8; font-weight: 400; }
+  #display-text:not(:empty) + #display-reply:not(:empty) { margin-top: 24px; }
+  .rendered-media { max-width: 100%; max-height: 70vh; }
+  .animated-image { display: inline-flex; flex-direction: column; max-width: 100%;
+    white-space: normal; background: #182130; }
+  .animated-image:fullscreen { width: 100%; height: 100%; align-items: center; justify-content: center; }
+  .animated-image:fullscreen canvas { max-height: calc(100vh - 60px); }
+  .image-controls { display: flex; align-items: center; gap: 8px; padding: 6px;
+    width: 100%; font: 14px/1.5 system-ui, sans-serif; }
+  .image-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
+  .image-controls input { flex: 1; min-width: 40px; }
+  .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 600px) { body { padding: 16px; } .buttons { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body class="minimal">
+<div id="usage-bar" aria-label="Cursor usage"><span id="usage-text">usage unavailable</span><div id="usage-fill"></div></div>
+<button id="page-fullscreen" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" aria-pressed="false" hidden>⛶</button>
+<main>
+  <div id="minimal-display" aria-live="polite">
+    <div id="display-text" class="plain-text"></div>
+    <div id="display-reply" class="plain-text"></div>
+  </div>
+  <header><h1>URL Autofill</h1><span class="version">v0.3.3</span></header>
+  <div class="memory-bar" aria-label="Persistent memory">
+    <span>Memory: <span id="memory-value">—</span></span>
+    <span>Clip ID: <span id="clip-value">—</span></span>
+    <span>Last action: <span id="last-action">—</span></span>
+    <span>Last updated: <time id="last-updated">—</time></span>
+    <button id="clear-memory" type="button">Clear memory</button>
+  </div>
+  <label for="text">You said</label>
+  <textarea id="text" placeholder="Your URL can fill this for you"></textarea>
+  <label for="reply">Assistant reply</label>
+  <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
+  <div class="buttons" aria-label="Manual actions">
+    <button type="button" data-action="render">Run Render</button>
+    <button type="button" data-action="clear">Run Clear</button>
+    <button type="button" data-action="speak">Run Speak</button>
+    <button type="button" data-action="upper">Run Upper</button>
+  </div>
+  <div id="waiting" hidden>
+    <div id="countdown" role="timer" aria-label="Time until action runs"></div>
+    <button id="cancel" type="button">Cancel</button>
+  </div>
+  <p id="status" role="status" aria-live="polite">Ready.</p>
+  <div id="output" aria-label="Rendered text" aria-live="polite"></div>
+  <details>
+    <summary>Help / About · v0.3.3</summary>
+    <ul>
+      <li><code>?minimal=0</code>: shows the full interface for debugging; absent or <code>minimal=1</code> shows only the two texts.</li>
+      <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
+      <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
+        <code>?usage=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
+      <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
+        use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
+        Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
+      <li><code>text</code>: fills the text field. URL-encode special characters.</li>
+      <li><code>reply</code>: fills the Assistant reply field. URL-encode special characters.</li>
+      <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
+      <li>Animated images have Play/Pause, frame seeking, and fullscreen controls in a WebCodecs browser such as Chrome/Edge; other browsers show a plain image.</li>
+      <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
+      <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
+      <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
+      <li><code>memory</code>: saves memory across page loads; an empty value clears memory.</li>
+      <li><code>clip</code>: saves the Clip ID across page loads.</li>
+      <li><code>delay</code>: seconds before the action, including decimals; maximum 3600.
+        Invalid or negative values become 0. Cancel stops a pending action.</li>
+    </ul>
+    <p><a href="?text=hello&amp;action=render&amp;delay=5"><code>index.html?text=hello&amp;action=render&amp;delay=5</code></a></p>
+    <p><a href="?text=hello&amp;reply=Hi%20there%21&amp;action=render"><code>index.html?text=hello&amp;reply=Hi%20there%21&amp;action=render</code></a></p>
+    <p><a href="?text=hello%20there&amp;action=upper&amp;delay=0.5"><code>index.html?text=hello%20there&amp;action=upper&amp;delay=0.5</code></a></p>
+    <p><a href="?memory=Remember%20this&amp;clip=clip-123&amp;action=render"><code>index.html?memory=Remember%20this&amp;clip=clip-123&amp;action=render</code></a></p>
+    <p><a href="?memory="><code>index.html?memory=</code></a> clears saved memory.</p>
+    <p>Manual Run buttons cancel any pending action. Speech availability depends on the browser;
+      some browsers require tapping the page (or Run Speak in the full interface) before audio can play.
+      When audio is unavailable, highlighting continues silently.</p>
+  </details>
+</main>
+<script>
+  'use strict';
+  function initialize() {
+    const fullscreenButton = document.getElementById('page-fullscreen');
+    const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+    const requestFullscreen = element => element.requestFullscreen || element.webkitRequestFullscreen;
+    const exitFullscreen = () => document.exitFullscreen || document.webkitExitFullscreen;
+    async function changeFullscreen(element) {
+      try {
+        if (element) {
+          const request = requestFullscreen(element);
+          if (typeof request === 'function') await request.call(element);
+        } else {
+          const exit = exitFullscreen();
+          if (typeof exit === 'function') await exit.call(document);
+        }
+      } catch (error) { /* Fullscreen may be denied by the browser. */ }
+    }
+    function syncFullscreen() {
+      const active = Boolean(fullscreenElement());
+      const label = active ? 'Exit fullscreen' : 'Enter fullscreen';
+      fullscreenButton.hidden = typeof requestFullscreen(document.documentElement) !== 'function' ||
+        typeof exitFullscreen() !== 'function';
+      fullscreenButton.setAttribute('aria-label', label);
+      fullscreenButton.setAttribute('aria-pressed', String(active));
+      fullscreenButton.title = label;
+      fullscreenButton.textContent = active ? '✕' : '⛶';
+    }
+    fullscreenButton.addEventListener('click', () => {
+      void changeFullscreen(fullscreenElement() ? null : document.documentElement);
+    });
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    document.addEventListener('webkitfullscreenchange', syncFullscreen);
+    syncFullscreen();
+    const field = document.getElementById('text');
+    const replyField = document.getElementById('reply');
+    const displayText = document.getElementById('display-text');
+    const displayReply = document.getElementById('display-reply');
+    const usageBar = document.getElementById('usage-bar');
+    const usageText = document.getElementById('usage-text');
+    const usageFill = document.getElementById('usage-fill');
+    const usageEnabled = new URLSearchParams(window.location.search).get('usage') !== '0';
+    usageBar.hidden = !usageEnabled;
+    let usageRequest = 0;
+    async function refreshUsage() {
+      if (!usageEnabled || window.location.protocol === 'file:') return;
+      const request = ++usageRequest;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch('/api/usage', { cache: 'no-store', signal: controller.signal });
+        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
+        const usage = await response.json();
+        if (!usage || usage.available !== true) throw new Error();
+        const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+        const money = value => number(value) ? `$${(value / 100).toFixed(2)}` : '—';
+        const percent = number(usage.percentUsed) ? usage.percentUsed : null;
+        if (request !== usageRequest) return;
+        usageText.textContent = `${money(usage.spentCents)} / ${money(usage.limitCents)}` +
+          (percent === null ? '' : ` · ${Math.round(percent)}%`);
+        usageFill.style.width = `${percent === null ? 0 : Math.min(100, percent)}%`;
+      } catch (error) {
+        if (request !== usageRequest) return;
+        usageText.textContent = 'usage unavailable';
+        usageFill.style.width = '0%';
+      } finally { window.clearTimeout(timeout); }
+    }
+    refreshUsage();
+    if (usageEnabled && window.location.protocol !== 'file:') window.setInterval(refreshUsage, 30000);
+    let speechSession = 0;
+    let speechTimers = [];
+    function stopSpeech() {
+      speechSession++;
+      speechTimers.forEach(window.clearTimeout);
+      speechTimers = [];
+      document.querySelectorAll('.speech-word.active').forEach(span => span.classList.remove('active'));
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+    function words(target, text, source) {
+      target.textContent = '';
+      for (const match of text.matchAll(/\S+|\s+/g)) {
+        const span = document.createElement('span');
+        span.textContent = match[0];
+        if (/\S/.test(match[0])) {
+          span.className = 'speech-word';
+          span.dataset.source = source;
+          span.dataset.start = match.index;
+          span.dataset.end = match.index + match[0].length;
+        }
+        target.append(span);
+      }
+    }
+    function mediaType(value) {
+      const trimmed = value.trim();
+      if (/^data:video\/[a-z0-9.+-]+(;[^,]*)?,/i.test(trimmed)) return 'video';
+      if (/^data:image\/[a-z0-9.+-]+(;[^,]*)?,/i.test(trimmed)) return 'image';
+      return null;
+    }
+    const imageSessions = new Map();
+    function disposeImages(target) {
+      for (const [element, dispose] of imageSessions) {
+        if (element === target || target.contains(element)) dispose();
+      }
+    }
+    async function enhanceImage(target, fallback, uri) {
+      if (!('ImageDecoder' in window)) return;
+      let decoder;
+      let timer;
+      let disposed = false;
+      let revision = 0;
+      let playing = true;
+      let ended = false;
+      let frameIndex = 0;
+      let repetitions = 0;
+      let duration = 100;
+      const controller = new AbortController();
+      const dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        revision++;
+        window.clearTimeout(timer);
+        controller.abort();
+        if (decoder) decoder.close();
+        imageSessions.delete(target);
+      };
+      imageSessions.set(target, dispose);
+      try {
+        const mime = uri.slice(5, uri.search(/[;,]/)).toLowerCase();
+        if (!await window.ImageDecoder.isTypeSupported(mime) || disposed) {
+          dispose();
+          return;
+        }
+        const response = await fetch(uri, { signal: controller.signal });
+        const data = await response.arrayBuffer();
+        if (disposed) return;
+        decoder = new window.ImageDecoder({ data, type: mime });
+        await decoder.tracks.ready;
+        await decoder.completed;
+        if (disposed) return;
+        const track = decoder.tracks.selectedTrack;
+        if (!track || !(track.animated || track.frameCount > 1)) {
+          dispose();
+          return;
+        }
+        const total = track.frameCount;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'animated-image';
+        wrapper.tabIndex = 0;
+        wrapper.setAttribute('aria-label', fallback.alt + ' playback');
+        const canvas = document.createElement('canvas');
+        canvas.className = 'rendered-media';
+        canvas.setAttribute('role', 'img');
+        canvas.setAttribute('aria-label', fallback.alt);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Canvas unavailable');
+        const controls = document.createElement('div');
+        controls.className = 'image-controls';
+        const play = document.createElement('button');
+        play.type = 'button';
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = String(total - 1);
+        slider.step = '1';
+        slider.value = '0';
+        slider.setAttribute('aria-label', 'Animation frame');
+        const position = document.createElement('span');
+        const fullscreen = document.createElement('button');
+        fullscreen.type = 'button';
+        fullscreen.textContent = 'Fullscreen';
+        fullscreen.disabled = typeof requestFullscreen(wrapper) !== 'function';
+        controls.append(play, slider, position, fullscreen);
+        wrapper.append(canvas, controls);
+        function update() {
+          play.textContent = playing ? 'Pause' : 'Play';
+          slider.value = String(frameIndex);
+          position.textContent = `${frameIndex + 1} / ${total}`;
+        }
+        function fallbackImage() {
+          if (disposed) return;
+          dispose();
+          target.replaceChildren(fallback);
+        }
+        async function draw(index) {
+          const request = ++revision;
+          const result = await decoder.decode({ frameIndex: index });
+          const frame = result.image;
+          try {
+            if (disposed || request !== revision) return false;
+            canvas.width = frame.displayWidth;
+            canvas.height = frame.displayHeight;
+            context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+            duration = frame.duration > 0 ? frame.duration / 1000 : 100;
+            frameIndex = index;
+            update();
+            return true;
+          } finally { frame.close(); }
+        }
+        function schedule() {
+          window.clearTimeout(timer);
+          if (!playing || disposed) return;
+          timer = window.setTimeout(async () => {
+            let next = frameIndex + 1;
+            if (next === total) {
+              if (track.repetitionCount !== Infinity && repetitions >= track.repetitionCount) {
+                playing = false;
+                ended = true;
+                update();
+                return;
+              }
+              repetitions++;
+              next = 0;
+            }
+            try { if (await draw(next)) schedule(); }
+            catch (error) { fallbackImage(); }
+          }, duration);
+        }
+        async function toggle() {
+          playing = !playing;
+          update();
+          if (playing && ended) {
+            ended = false;
+            repetitions = 0;
+            try { if (await draw(0)) schedule(); }
+            catch (error) { fallbackImage(); }
+          } else {
+            schedule();
+          }
+        }
+        play.addEventListener('click', toggle);
+        slider.addEventListener('input', async () => {
+          window.clearTimeout(timer);
+          repetitions = 0;
+          ended = false;
+          try { if (await draw(Number(slider.value))) schedule(); }
+          catch (error) { fallbackImage(); }
+        });
+        fullscreen.addEventListener('click', () => {
+          void changeFullscreen(wrapper);
+        });
+        wrapper.addEventListener('click', event => event.stopPropagation());
+        wrapper.addEventListener('keydown', event => {
+          if (event.code !== 'Space' || event.ctrlKey || event.metaKey || event.altKey ||
+              event.target.closest('button, input')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) toggle();
+        });
+        if (await draw(0)) {
+          target.replaceChildren(wrapper);
+          schedule();
+        }
+      } catch (error) {
+        if (!disposed) dispose();
+        // Keep the native image for unsupported formats and decoding failures.
+      }
+    }
+    function renderValue(target, value, source) {
+      disposeImages(target);
+      const type = mediaType(value);
+      if (!type) { words(target, value, source); return; }
+      target.textContent = '';
+      const media = document.createElement(type === 'video' ? 'video' : 'img');
+      media.className = 'rendered-media';
+      media.src = value.trim();
+      if (type === 'video') {
+        media.controls = true;
+        media.playsInline = true;
+        media.preload = 'metadata';
+      } else {
+        media.alt = source === 'reply' ? 'Assistant reply image' : 'User text image';
+      }
+      target.append(media);
+      if (type === 'image') void enhanceImage(target, media, value.trim());
+    }
+    let displayedText;
+    let displayedReply;
+    function syncDisplay() {
+      if (displayedText === field.value && displayedReply === replyField.value) return;
+      stopSpeech();
+      renderValue(displayText, field.value, 'text');
+      renderValue(displayReply, replyField.value, 'reply');
+      displayedText = field.value;
+      displayedReply = replyField.value;
+    }
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'u' || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+          event.target.closest('input, textarea, select, [contenteditable]')) return;
+      document.body.classList.toggle('minimal');
+      syncDisplay();
+    });
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+    const waiting = document.getElementById('waiting');
+    const countdown = document.getElementById('countdown');
+    let timer = null;
+    let ticker = null;
+    const storageKey = 'urlAutofill.v1';
+    const memoryState = { memory: '', clip: '', text: '', reply: '', lastAction: '', lastUpdated: '' };
+    function loadMemory() {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(storageKey));
+        for (const key of Object.keys(memoryState)) {
+          memoryState[key] = saved && typeof saved[key] === 'string' ? saved[key] : '';
+        }
+      } catch (error) { /* Keep in-page state when storage is unavailable. */ }
+    }
+    function showMemory() {
+      document.getElementById('memory-value').textContent = memoryState.memory || '—';
+      document.getElementById('clip-value').textContent = memoryState.clip || '—';
+      document.getElementById('last-action').textContent = memoryState.lastAction || '—';
+      const time = document.getElementById('last-updated');
+      const date = new Date(memoryState.lastUpdated);
+      const valid = !Number.isNaN(date.getTime());
+      time.textContent = valid ? date.toLocaleString() : '—';
+      time.dateTime = valid ? date.toISOString() : '';
+    }
+    function saveMemory() {
+      try {
+        const persisted = { ...memoryState };
+        for (const key of Object.keys(persisted)) {
+          // localStorage strings use roughly two bytes per character.
+          if (persisted[key].length * 2 > 2 * 1024 * 1024 && mediaType(persisted[key])) {
+            persisted[key] = '';
+          }
+        }
+        window.localStorage.setItem(storageKey, JSON.stringify(persisted));
+      }
+      catch (error) { /* The page also works without persistent storage. */ }
+      showMemory();
+    }
+    function saveText() {
+      memoryState.text = field.value;
+      saveMemory();
+      syncDisplay();
+    }
+    field.addEventListener('input', saveText);
+    replyField.addEventListener('input', () => {
+      memoryState.reply = replyField.value;
+      saveMemory();
+      syncDisplay();
+    });
+    function message(text, error = false) {
+      status.textContent = text;
+      status.classList.toggle('error', error);
+    }
+    function render() {
+      syncDisplay();
+      disposeImages(output);
+      output.textContent = '';
+      const spoken = document.createElement('div');
+      renderValue(spoken, field.value || 'No text to render.', 'text');
+      const reply = document.createElement('div');
+      reply.className = 'rendered-reply';
+      renderValue(reply, replyField.value || 'No assistant reply to render.', 'reply');
+      output.append(spoken, reply);
+      message('Text rendered.');
+    }
+    function clear() {
+      field.value = '';
+      saveText();
+      disposeImages(output);
+      output.textContent = '';
+      stopSpeech();
+      message('Text cleared.');
+    }
+    function speak() {
+      syncDisplay();
+      stopSpeech();
+      const source = replyField.value ? 'reply' : 'text';
+      const text = source === 'reply' ? replyField.value : field.value;
+      if (mediaType(text)) { message('Media is skipped by speech.'); return; }
+      const tokens = Array.from(text.matchAll(/\S+/g));
+      if (!tokens.length) { message('Add some text to speak first.', true); return; }
+      const session = speechSession;
+      const rate = 1;
+      let started = false;
+      let boundarySeen = false;
+      let sweeping = false;
+      let audioAbandoned = false;
+      let sweepTimer;
+      const later = (callback, delay) => {
+        const id = window.setTimeout(() => { if (session === speechSession) callback(); }, delay);
+        speechTimers.push(id);
+        return id;
+      };
+      const highlight = index => {
+        document.querySelectorAll('.speech-word').forEach(span => {
+          span.classList.toggle('active', span.dataset.source === source &&
+            index >= Number(span.dataset.start) && index < Number(span.dataset.end));
+        });
+      };
+      const finish = () => {
+        if (session !== speechSession) return;
+        stopSpeech();
+        message('Speech finished.');
+      };
+      const sweep = (silent = false) => {
+        if (sweeping) return;
+        sweeping = true;
+        if (silent) {
+          audioAbandoned = true;
+          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        }
+        message(silent ? 'Highlighting without audio…' : 'Speaking…');
+        let index = 0;
+        const step = () => {
+          if (index === tokens.length) {
+            highlight(-1);
+            if (silent) finish();
+            return;
+          }
+          const token = tokens[index++];
+          highlight(token.index);
+          sweepTimer = later(step, Math.max(180, token[0].length * 55 + 100) / rate);
+        };
+        step();
+      };
+      if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+        sweep(true);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = rate;
+      utterance.onstart = () => {
+        if (session !== speechSession || sweeping || audioAbandoned) return;
+        started = true;
+        message('Speaking…');
+        highlight(tokens[0].index);
+        later(() => { if (!boundarySeen) sweep(); }, 800);
+      };
+      utterance.onboundary = event => {
+        if (session !== speechSession || audioAbandoned || !started || (event.name && event.name !== 'word')) return;
+        boundarySeen = true;
+        window.clearTimeout(sweepTimer);
+        const token = tokens.find(token => event.charIndex < token.index + token[0].length);
+        highlight(token ? token.index : -1);
+      };
+      utterance.onend = () => { if (started && !audioAbandoned) finish(); };
+      utterance.onerror = () => {
+        if (session !== speechSession || audioAbandoned) return;
+        window.clearTimeout(sweepTimer);
+        sweeping = false;
+        sweep(true);
+      };
+      message('Speech requested.');
+      later(() => { if (!started) sweep(true); }, 1500);
+      try { window.speechSynthesis.speak(utterance); }
+      catch (error) { sweep(true); }
+    }
+    function upper() { field.value = field.value.toUpperCase(); saveText(); message('Text uppercased.'); }
+    const actions = Object.freeze({ render, clear, speak, upper });
+    function stopWaiting() {
+      window.clearTimeout(timer);
+      window.clearInterval(ticker);
+      timer = ticker = null;
+      waiting.hidden = true;
+    }
+    function run(name) {
+      stopWaiting();
+      name = name.trim().toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(actions, name)) {
+        message(`Unknown action "${name}". Choose render, clear, speak, or upper.`, true);
+        return;
+      }
+      memoryState.lastAction = name;
+      memoryState.lastUpdated = new Date().toISOString();
+      saveMemory();
+      try { actions[name](); }
+      catch (error) { message('The action could not run. Please try a manual Run button.', true); }
+      finally { refreshUsage(); }
+    }
+    document.querySelectorAll('[data-action]').forEach(button => {
+      button.addEventListener('click', () => run(button.dataset.action));
+    });
+    document.getElementById('cancel').addEventListener('click', () => {
+      stopWaiting();
+      message('Scheduled action canceled.');
+    });
+    document.getElementById('clear-memory').addEventListener('click', () => {
+      memoryState.memory = '';
+      memoryState.text = '';
+      memoryState.reply = '';
+      saveMemory();
+    });
+    document.addEventListener('click', event => {
+      if (event.target.closest('#page-fullscreen, .image-controls, video, audio')) return;
+      if (document.body.classList.contains('minimal')) run('speak');
+    });
+    function startup() {
+      stopWaiting();
+      stopSpeech();
+      loadMemory();
+      const params = new URLSearchParams(window.location.search);
+      document.body.classList.toggle('minimal', params.get('minimal') !== '0');
+      let changed = false;
+      for (const key of ['memory', 'clip']) {
+        if (params.has(key)) { memoryState[key] = params.get(key); changed = true; }
+      }
+      if (params.has('text')) {
+        field.value = params.get('text');
+        memoryState.text = field.value;
+        changed = true;
+      } else {
+        field.value = memoryState.text;
+      }
+      if (params.has('reply')) {
+        replyField.value = params.get('reply');
+        memoryState.reply = replyField.value;
+        changed = true;
+      } else {
+        replyField.value = memoryState.reply;
+      }
+      if (changed) saveMemory();
+      else showMemory();
+      syncDisplay();
+      if (params.has('action') || params.get('speak') === '1') {
+        const name = params.has('action') ? params.get('action').trim().toLowerCase() : 'speak';
+        const execute = () => {
+          run(name);
+          if (params.get('speak') === '1' && name !== 'speak') run('speak');
+        };
+        const number = Number(params.get('delay'));
+        const seconds = Number.isFinite(number) && number >= 0 ? Math.min(number, 3600) : 0;
+        const milliseconds = seconds * 1000;
+        if (!Object.prototype.hasOwnProperty.call(actions, name) || milliseconds === 0) {
+          execute();
+        } else {
+          const deadline = Date.now() + milliseconds;
+          const update = () => {
+            const remaining = Math.max(0, (deadline - Date.now()) / 1000);
+            countdown.textContent = `Running ${name} in ${remaining.toFixed(1)} seconds…`;
+          };
+          waiting.hidden = false;
+          message(`Scheduled ${name}.`);
+          update();
+          ticker = window.setInterval(update, 100);
+          timer = window.setTimeout(execute, milliseconds);
+        }
+      }
+    }
+    startup();
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) startup();
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize, { once: true });
+  } else {
+    initialize();
+  }
+</script>
+</body>
+</html>
