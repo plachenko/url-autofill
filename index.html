@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.5.0</title>
+<title>URL Autofill · v0.6.0</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -101,6 +101,34 @@
   .clip-row label { flex: 1; margin: 0; font-size: 15px; font-weight: 400; }
   .clip-row input { width: 20px; height: 20px; vertical-align: middle; }
   .clip-row button { flex: 0 0 auto; background: #75393f; }
+  #compositor { margin-top: 24px; padding: 16px; background: #182130;
+    border: 1px solid #7085a1; border-radius: 12px; font-size: 16px; }
+  #compositor h2 { margin: 0 0 12px; font-size: 22px; }
+  .compositor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  #compositor button { min-height: 42px; padding: 7px 12px; font-size: 15px; border-radius: 6px; }
+  #composition-preview { display: grid; place-items: center; min-height: 180px;
+    background: #10151e; border-radius: 8px; overflow: hidden; }
+  #composition-preview img, #composition-preview video { max-width: 100%; max-height: 55vh; }
+  #composition-preview [hidden] { display: none; }
+  #composition-scrubber { width: 100%; margin: 12px 0 4px; }
+  #track-list { display: grid; gap: 10px; overflow-x: auto; }
+  .track-row { display: flex; min-width: max-content; align-items: stretch; gap: 8px; }
+  .track-heading { width: 88px; flex: 0 0 88px; font-weight: 700; padding: 12px 0; }
+  .track-lane { position: relative; flex: 0 0 auto; min-width: 200px; min-height: 108px;
+    background: #10151e; border: 1px dashed #7085a1; border-radius: 8px; }
+  .clip-tile { position: absolute; top: 0; min-height: 106px; overflow: hidden;
+    background: #284e82; border: 1px solid #7799cb; border-radius: 7px; }
+  .clip-tile.dragging { opacity: .6; z-index: 2; }
+  .clip-drag-preview { position: fixed; z-index: 10002; pointer-events: none;
+    opacity: .85; box-shadow: 0 12px 24px #0009; }
+  .clip-tile img, .clip-tile video { display: block; width: 100%; height: 62px; object-fit: cover; background: #10151e; }
+  .clip-tile strong, .clip-tile small { display: block; padding: 0 5px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .clip-grip { position: absolute; inset: 0; cursor: grab; touch-action: none; }
+  .clip-tile button { position: absolute; right: 2px; top: 2px; z-index: 1;
+    width: 26px; min-height: 26px !important; padding: 0 !important; }
+  #compositor-status { color: #b8c8e0; overflow-wrap: anywhere; }
+  #compositor-status.error { color: #ffb4b4; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { body { padding: 16px; } .buttons { grid-template-columns: repeat(2, 1fr); } }
@@ -115,7 +143,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.5.0</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.6.0</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -137,7 +165,6 @@
     <p id="clip-status" role="status" aria-live="polite"></p>
     <p>Clips stay in this browser. Large videos may exceed browser storage.</p>
     <div id="clip-list" aria-label="Stored clips"></div>
-    <button id="play-clips" type="button">Play selected clips</button>
   </section>
   <label for="reply">Assistant reply</label>
   <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
@@ -153,8 +180,25 @@
   </div>
   <p id="status" role="status" aria-live="polite">Ready.</p>
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
+  <section id="compositor" aria-labelledby="compositor-title">
+    <h2 id="compositor-title">Video compositor</h2>
+    <div id="composition-preview" aria-label="Composition preview">
+      <img id="composition-image" alt="Current composition frame" hidden>
+      <video id="composition-video" playsinline muted hidden></video>
+      <span id="composition-empty">Add clips to a track to preview them.</span>
+    </div>
+    <input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds">
+    <div id="composition-time">0.00 / 0.00 seconds</div>
+    <div class="compositor-actions">
+      <button id="composition-play" type="button">Play</button>
+      <button id="add-track" type="button">Add track</button>
+      <button id="position-url" type="button">Put position in URL</button>
+    </div>
+    <div id="track-list" aria-label="Composition tracks"></div>
+    <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
+  </section>
   <details>
-    <summary>Help / About · v0.5.0</summary>
+    <summary>Help / About · v0.6.0</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. <code>?minimal=0</code> or <code>?minimal=1</code> overrides the saved choice for that URL.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
@@ -169,7 +213,8 @@
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
       <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
-      <li>In the full interface, save an image or video under the text field, select stored clips, and play them as a timeline.</li>
+      <li>Share compositor tracks with <code>?tracks=clip1@0,clip2@3|clip3@1&amp;pos=2.50&amp;minimal=0</code>. Each <code>@</code> value is a start second; <code>pos</code> is the scrubber position. The receiving browser needs the saved clips.</li>
+      <li>In the full interface, add saved clips to compositor tracks below the rendered output. Drag tiles to set their start second or move them between tracks. The bottom track appears over earlier tracks. Scrub by seconds and use Put position in URL to share the layout and current position.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -845,9 +890,316 @@
       return candidate;
     }
     function clipSeconds() { return Number(clipSecondsField.value); }
-    function refreshClipList(selectId = '') {
-      const selected = new Set(Array.from(clipList.querySelectorAll('input:checked'), input => input.value));
-      if (selectId) selected.add(selectId);
+    const trackList = document.getElementById('track-list');
+    const compositionImage = document.getElementById('composition-image');
+    const compositionVideo = document.getElementById('composition-video');
+    const compositionEmpty = document.getElementById('composition-empty');
+    const compositionScrubber = document.getElementById('composition-scrubber');
+    const compositionTimeLabel = document.getElementById('composition-time');
+    const compositionPlay = document.getElementById('composition-play');
+    const compositorStatus = document.getElementById('compositor-status');
+    const compositorKey = 'urlAutofill.compositor.v1';
+    let tracks = [[]];
+    let activeTrack = 0;
+    let compositionItems = [];
+    let compositionDuration = 0;
+    let compositionTime = 0;
+    let compositionPlaying = false;
+    let compositionFrame = 0;
+    let compositionStarted = 0;
+    let compositionRevision = 0;
+    let visibleItem = null;
+    let pendingClipFocus = null;
+    const clipDetails = new Map();
+    function compositorMessage(text, error = false) {
+      compositorStatus.textContent = text;
+      compositorStatus.classList.toggle('error', error);
+    }
+    function validTracks(value) {
+      return Array.isArray(value) && value.length > 0 && value.length <= 8 &&
+        value.every(track => Array.isArray(track) && track.length <= 100 &&
+          track.every(clip => clip && validMediaId(clip.id) &&
+            Number.isFinite(clip.start) && clip.start >= 0 && clip.start <= 86400)) &&
+        value.flat().length <= 100;
+    }
+    function saveTracks() {
+      try { window.localStorage.setItem(compositorKey, JSON.stringify(tracks)); }
+      catch (error) { compositorMessage('Tracks changed, but browser storage could not save the layout.', true); }
+    }
+    function clipDetail(id) {
+      if (!clipDetails.has(id)) {
+        const item = loadMedia(id);
+        const promise = item.type === 'image' ? Promise.resolve({ ...item, duration: item.seconds }) :
+          new Promise(resolve => {
+            const probe = document.createElement('video');
+            let done = false;
+            const finish = duration => {
+              if (done) return;
+              done = true;
+              window.clearTimeout(timeout);
+              probe.removeAttribute('src');
+              resolve({ ...item, duration });
+            };
+            const timeout = window.setTimeout(() => finish(3), 10000);
+            probe.preload = 'metadata';
+            probe.onloadedmetadata = () => finish(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 3);
+            probe.onerror = () => finish(3);
+            probe.src = item.src;
+          });
+        clipDetails.set(id, promise);
+      }
+      return clipDetails.get(id);
+    }
+    function stopComposition() {
+      compositionPlaying = false;
+      window.cancelAnimationFrame(compositionFrame);
+      compositionVideo.pause();
+      compositionPlay.textContent = 'Play';
+    }
+    function syncCompositionPreview(seek = false) {
+      const active = compositionItems.filter(entry =>
+        compositionTime >= entry.start && compositionTime < entry.end)
+        .sort((a, b) => b.track - a.track || b.start - a.start)[0] || null;
+      if (active !== visibleItem) {
+        compositionVideo.pause();
+        compositionVideo.removeAttribute('src');
+        compositionImage.removeAttribute('src');
+        visibleItem = active;
+        compositionImage.hidden = !active || active.item.type !== 'image';
+        compositionVideo.hidden = !active || active.item.type !== 'video';
+        compositionEmpty.hidden = Boolean(active);
+        if (active?.item.type === 'image') compositionImage.src = active.item.src;
+        if (active?.item.type === 'video') {
+          compositionVideo.src = active.item.src;
+          compositionVideo.onloadedmetadata = () => {
+            if (visibleItem !== active) return;
+            compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, compositionTime - active.start));
+            if (compositionPlaying) void compositionVideo.play().catch(() => stopComposition());
+          };
+          seek = true;
+        }
+      }
+      if (active?.item.type === 'video' && compositionVideo.readyState >= 1) {
+        const offset = compositionTime - active.start;
+        if (seek || Math.abs(compositionVideo.currentTime - offset) > .35) {
+          compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, offset));
+        }
+        if (compositionPlaying && compositionVideo.paused) void compositionVideo.play().catch(() => stopComposition());
+        if (!compositionPlaying && !compositionVideo.paused) compositionVideo.pause();
+      }
+      compositionScrubber.value = String(compositionTime);
+      compositionTimeLabel.textContent = `${compositionTime.toFixed(2)} / ${compositionDuration.toFixed(2)} seconds`;
+    }
+    function setCompositionTime(seconds, seek = true) {
+      compositionTime = Math.max(0, Math.min(compositionDuration, seconds));
+      if (compositionPlaying) compositionStarted = performance.now() - compositionTime * 1000;
+      syncCompositionPreview(seek);
+    }
+    function compositionTick(now) {
+      if (!compositionPlaying) return;
+      compositionTime = Math.min(compositionDuration, (now - compositionStarted) / 1000);
+      if (compositionTime >= compositionDuration) stopComposition();
+      syncCompositionPreview();
+      if (compositionPlaying) compositionFrame = window.requestAnimationFrame(compositionTick);
+    }
+    compositionPlay.addEventListener('click', () => {
+      if (compositionPlaying) { stopComposition(); syncCompositionPreview(); return; }
+      if (!compositionDuration) { compositorMessage('Add a complete clip to a track first.', true); return; }
+      if (compositionTime >= compositionDuration) setCompositionTime(0);
+      compositionPlaying = true;
+      compositionStarted = performance.now() - compositionTime * 1000;
+      compositionPlay.textContent = 'Pause';
+      syncCompositionPreview();
+      compositionFrame = window.requestAnimationFrame(compositionTick);
+    });
+    compositionScrubber.addEventListener('input', () => setCompositionTime(Number(compositionScrubber.value)));
+    document.getElementById('add-track').addEventListener('click', () => {
+      if (tracks.length >= 8) { compositorMessage('The compositor supports up to 8 tracks.', true); return; }
+      tracks.push([]);
+      activeTrack = tracks.length - 1;
+      saveTracks();
+      void refreshCompositor();
+    });
+    document.getElementById('position-url').addEventListener('click', () => {
+      if (!compositionItems.length) { compositorMessage('Add a complete clip before sharing a position.', true); return; }
+      const url = new URL(window.location.href);
+      url.search = '';
+      url.searchParams.set('tracks', tracks.map(track =>
+        track.map(clip => `${clip.id}@${clip.start.toFixed(2)}`).join(',')).join('|'));
+      url.searchParams.set('pos', compositionTime.toFixed(2));
+      url.searchParams.set('minimal', '0');
+      try {
+        window.history.replaceState(null, '', url);
+        compositorMessage(`Position ${compositionTime.toFixed(2)} seconds is in the URL.`);
+      } catch (error) { compositorMessage('This browser could not update the URL.', true); }
+    });
+    async function addClipToTrack(id) {
+      if (tracks.flat().length >= 100) { compositorMessage('The compositor supports up to 100 clips.', true); return; }
+      const trackIndex = activeTrack;
+      const existing = tracks[trackIndex];
+      const items = await Promise.all(existing.map(clip =>
+        Promise.resolve().then(() => clipDetail(clip.id)).catch(() => null)));
+      const start = existing.reduce((end, clip, index) =>
+        Math.max(end, clip.start + (items[index]?.duration || 0)), 0);
+      tracks[trackIndex].push({ id, start: Math.round(start * 100) / 100 });
+      saveTracks();
+      void refreshCompositor();
+    }
+    async function refreshCompositor() {
+      const revision = ++compositionRevision;
+      stopComposition();
+      const source = tracks.map(track => track.map(clip => ({ ...clip })));
+      const details = await Promise.all(source.flat().map(clip =>
+        Promise.resolve().then(() => clipDetail(clip.id)).catch(() => null)));
+      if (revision !== compositionRevision) return;
+      if (details.some(item => !item)) {
+        compositorMessage('Some clips in this layout are missing or incomplete in this browser.', true);
+      }
+      compositionItems = [];
+      compositionDuration = 0;
+      trackList.replaceChildren();
+      let detailIndex = 0;
+      const trackDetails = source.map(track => track.map(() => details[detailIndex++]));
+      let focusGrip = null;
+      source.forEach((track, trackIndex) => track.forEach((clip, clipIndex) => {
+        const item = trackDetails[trackIndex][clipIndex];
+        if (!item) return;
+        const entry = { id: clip.id, item, start: clip.start,
+          end: clip.start + item.duration, track: trackIndex };
+        compositionItems.push(entry);
+        compositionDuration = Math.max(compositionDuration, entry.end);
+      }));
+      source.forEach((track, trackIndex) => {
+        const row = document.createElement('div');
+        row.className = 'track-row';
+        const heading = document.createElement('button');
+        heading.type = 'button';
+        heading.className = 'track-heading';
+        heading.textContent = `Track ${trackIndex + 1}${trackIndex === activeTrack ? ' ✓' : ''}`;
+        heading.setAttribute('aria-label', `Add new clips to track ${trackIndex + 1}`);
+        heading.addEventListener('click', () => { activeTrack = trackIndex; void refreshCompositor(); refreshClipList(); });
+        const lane = document.createElement('div');
+        lane.className = 'track-lane';
+        lane.dataset.track = String(trackIndex);
+        lane.style.width = `${Math.max(200, Math.ceil(compositionDuration * 40) + 80)}px`;
+        track.forEach((clip, clipIndex) => {
+          const item = trackDetails[trackIndex][clipIndex];
+          if (!item) return;
+          const id = clip.id;
+          const tile = document.createElement('div');
+          tile.className = 'clip-tile';
+          tile.dataset.index = String(clipIndex);
+          tile.style.left = `${Math.round(clip.start * 40)}px`;
+          tile.style.width = `${Math.min(2000, Math.max(88, Math.round(item.duration * 40)))}px`;
+          const thumbnail = document.createElement(item.type === 'video' ? 'video' : 'img');
+          thumbnail.src = item.src;
+          if (item.type === 'video') {
+            thumbnail.muted = true;
+            thumbnail.playsInline = true;
+            thumbnail.preload = 'metadata';
+            thumbnail.addEventListener('loadedmetadata', () => {
+              thumbnail.currentTime = Math.min(.1, thumbnail.duration / 2);
+            }, { once: true });
+          } else thumbnail.alt = '';
+          const name = document.createElement('strong');
+          name.textContent = id;
+          const length = document.createElement('small');
+          length.textContent = `${item.duration.toFixed(2)}s`;
+          const grip = document.createElement('div');
+          grip.className = 'clip-grip';
+          grip.tabIndex = 0;
+          grip.setAttribute('role', 'button');
+          grip.setAttribute('aria-label', `Move ${id}; arrow keys change time or track`);
+          grip.addEventListener('keydown', event => {
+            let destinationTrack = trackIndex;
+            let destinationStart = clip.start;
+            if (event.key === 'ArrowLeft') destinationStart = Math.max(0, clip.start - .1);
+            else if (event.key === 'ArrowRight') destinationStart = Math.min(86400, clip.start + .1);
+            else if (event.key === 'ArrowUp') destinationTrack = Math.max(0, trackIndex - 1);
+            else if (event.key === 'ArrowDown') destinationTrack = Math.min(tracks.length - 1, trackIndex + 1);
+            else return;
+            event.preventDefault();
+            if (destinationTrack === trackIndex && destinationStart === clip.start) return;
+            tracks[trackIndex].splice(clipIndex, 1);
+            tracks[destinationTrack].push({ id, start: Math.round(destinationStart * 100) / 100 });
+            tracks[destinationTrack].sort((a, b) => a.start - b.start);
+            activeTrack = destinationTrack;
+            pendingClipFocus = { id, start: Math.round(destinationStart * 100) / 100, track: destinationTrack };
+            saveTracks();
+            void refreshCompositor();
+          });
+          if (pendingClipFocus?.id === id && pendingClipFocus.start === clip.start &&
+              pendingClipFocus.track === trackIndex) focusGrip = grip;
+          grip.addEventListener('pointerdown', event => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            grip.setPointerCapture(event.pointerId);
+            const x = event.clientX;
+            const y = event.clientY;
+            const bounds = tile.getBoundingClientRect();
+            const grabOffset = x - bounds.left;
+            const ghost = tile.cloneNode(true);
+            ghost.classList.add('clip-drag-preview');
+            ghost.style.left = `${bounds.left}px`;
+            ghost.style.top = `${bounds.top}px`;
+            ghost.style.width = `${bounds.width}px`;
+            document.body.append(ghost);
+            tile.classList.add('dragging');
+            const move = moveEvent => {
+              ghost.style.transform = `translate(${moveEvent.clientX - x}px, ${moveEvent.clientY - y}px)`;
+            };
+            const finish = endEvent => {
+              grip.removeEventListener('pointermove', move);
+              grip.removeEventListener('pointerup', finish);
+              grip.removeEventListener('pointercancel', cancel);
+              ghost.remove();
+              const hit = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
+              tile.classList.remove('dragging');
+              const targetLane = hit?.closest('.track-lane');
+              if (!targetLane) return;
+              const destinationTrack = Number(targetLane.dataset.track);
+              const destinationStart = Math.min(86400, Math.max(0, Math.round((endEvent.clientX - grabOffset -
+                targetLane.getBoundingClientRect().left) / 4) / 10));
+              tracks[trackIndex].splice(clipIndex, 1);
+              tracks[destinationTrack].push({ id, start: destinationStart });
+              tracks[destinationTrack].sort((a, b) => a.start - b.start);
+              activeTrack = destinationTrack;
+              saveTracks();
+              void refreshCompositor();
+            };
+            const cancel = () => {
+              grip.removeEventListener('pointermove', move);
+              grip.removeEventListener('pointerup', finish);
+              grip.removeEventListener('pointercancel', cancel);
+              ghost.remove();
+              tile.classList.remove('dragging');
+            };
+            grip.addEventListener('pointermove', move);
+            grip.addEventListener('pointerup', finish);
+            grip.addEventListener('pointercancel', cancel);
+          });
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.textContent = '×';
+          remove.setAttribute('aria-label', `Remove ${id} from track ${trackIndex + 1}`);
+          remove.addEventListener('click', () => {
+            tracks[trackIndex].splice(clipIndex, 1);
+            saveTracks();
+            void refreshCompositor();
+          });
+          tile.append(thumbnail, name, length, grip, remove);
+          lane.append(tile);
+        });
+        row.append(heading, lane);
+        trackList.append(row);
+      });
+      visibleItem = null;
+      compositionScrubber.max = String(compositionDuration);
+      setCompositionTime(compositionTime);
+      if (focusGrip) { focusGrip.focus(); pendingClipFocus = null; }
+      refreshClipList();
+    }
+    function refreshClipList() {
       clipList.replaceChildren();
       try {
         const clips = [];
@@ -874,15 +1226,14 @@
         for (const clip of clips) {
           const row = document.createElement('div');
           row.className = 'clip-row';
-          const label = document.createElement('label');
-          const checkbox = document.createElement('input');
-          checkbox.type = 'checkbox';
-          checkbox.value = clip.id;
-          checkbox.checked = selected.has(clip.id);
-          checkbox.disabled = clip.parts !== clip.total;
           const description = document.createElement('span');
-          description.textContent = ` ${clip.id} · ${clip.mime} · ${clip.parts}/${clip.total} parts · ${Math.round(clip.length * 0.75 / 1024)} KB`;
-          label.append(checkbox, description);
+          description.textContent = `${clip.id} · ${clip.mime} · ${clip.parts}/${clip.total} parts · ${Math.round(clip.length * 0.75 / 1024)} KB`;
+          description.style.flex = '1';
+          const add = document.createElement('button');
+          add.type = 'button';
+          add.textContent = `Add to track ${activeTrack + 1}`;
+          add.disabled = clip.parts !== clip.total;
+          add.addEventListener('click', () => addClipToTrack(clip.id));
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.textContent = 'Delete';
@@ -890,7 +1241,11 @@
           remove.addEventListener('click', () => {
             if (!window.confirm(`Delete stored clip ${clip.id}?`)) return;
             try {
-              message(deleteMedia(clip.id));
+              clipMessage(deleteMedia(clip.id));
+              clipDetails.delete(clip.id);
+              tracks = tracks.map(track => track.filter(item => item.id !== clip.id));
+              saveTracks();
+              void refreshCompositor();
               refreshClipList();
               if (field.value.startsWith('timeline:') &&
                   field.value.slice('timeline:'.length).split(',').includes(clip.id)) {
@@ -899,9 +1254,9 @@
                 disposeMedia(output);
                 output.textContent = '';
               }
-            } catch (error) { message(error.message, true); }
+            } catch (error) { clipMessage(error.message, true); }
           });
-          row.append(label, remove);
+          row.append(description, add, remove);
           clipList.append(row);
         }
       } catch (error) { clipList.textContent = 'Clip storage is unavailable in this browser.'; }
@@ -926,7 +1281,8 @@
         });
         clipMessage(storeWholeMedia(clipIdField.value.trim(), dataUri, clipSeconds()));
         clipFileField.value = '';
-        refreshClipList(clipIdField.value.trim());
+        refreshClipList();
+        addClipToTrack(clipIdField.value.trim());
       } catch (error) { clipError(error); }
       finally { submit.disabled = false; }
     });
@@ -935,15 +1291,9 @@
         const dataUri = /^data:/i.test(replyField.value.trim()) ? replyField.value : field.value;
         const id = clipId();
         clipMessage(storeWholeMedia(id, dataUri, clipSeconds()));
-        refreshClipList(id);
+        refreshClipList();
+        addClipToTrack(id);
       } catch (error) { clipError(error); }
-    });
-    document.getElementById('play-clips').addEventListener('click', () => {
-      const ids = Array.from(clipList.querySelectorAll('input:checked:not(:disabled)'), input => input.value);
-      if (!ids.length) { message('Select at least one complete clip.', true); return; }
-      field.value = `timeline:${ids.join(',')}`;
-      saveText();
-      render();
     });
     function render() {
       syncDisplay();
@@ -1131,6 +1481,30 @@
       try { savedMinimal = window.localStorage.getItem(minimalStorageKey) === '1'; }
       catch (error) { /* Use the full interface when storage is unavailable. */ }
       setMinimal(params.has('minimal') ? params.get('minimal') === '1' : savedMinimal, false);
+      try {
+        const savedTracks = JSON.parse(window.localStorage.getItem(compositorKey));
+        tracks = validTracks(savedTracks) ? savedTracks : [[]];
+      } catch (error) { tracks = [[]]; }
+      if (params.has('tracks')) {
+        const fromUrl = params.get('tracks').split('|').map(track => track ? track.split(',').map(value => {
+          const match = value.match(/^([a-zA-Z0-9_-]{1,64})@(\d+(?:\.\d+)?)$/);
+          return match ? { id: match[1], start: Number(match[2]) } : null;
+        }) : []);
+        if (validTracks(fromUrl)) { tracks = fromUrl; saveTracks(); }
+        else {
+          compositorMessage('The URL contains an invalid track layout.', true);
+          message('The URL contains an invalid track layout.', true);
+        }
+      }
+      if (params.has('delete') && validMediaId(params.get('delete'))) {
+        tracks = tracks.map(track => track.filter(item => item.id !== params.get('delete')));
+        saveTracks();
+      }
+      activeTrack = Math.min(activeTrack, tracks.length - 1);
+      const requestedPosition = Number(params.get('pos'));
+      compositionTime = params.has('pos') && Number.isFinite(requestedPosition) && requestedPosition >= 0 ?
+        requestedPosition : 0;
+      void refreshCompositor();
       refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
       if (params.has('action') || params.get('speak') === '1') {
