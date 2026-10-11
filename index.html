@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.4.0</title>
+<title>URL Autofill · v0.4.1</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -80,6 +80,22 @@
     width: 100%; padding: 6px; font: 14px/1.5 system-ui, sans-serif; }
   .timeline-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
   .timeline-controls input { flex: 1; min-width: 80px; }
+  #clip-library { margin: 18px 0 24px; padding: 16px; background: #182130;
+    border: 1px solid #7085a1; border-radius: 12px; font-size: 16px; }
+  #clip-library h2 { margin: 0 0 12px; font-size: 22px; }
+  #clip-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+  #clip-form label { flex: 1 1 160px; margin: 0; font-size: 14px; }
+  #clip-form input { display: block; width: 100%; min-height: 42px; margin-top: 4px;
+    padding: 6px 8px; color: #fff; background: #10151e; border: 1px solid #7085a1;
+    border-radius: 6px; font: 16px system-ui, sans-serif; }
+  #clip-library button { min-height: 42px; padding: 7px 12px; font-size: 15px; border-radius: 6px; }
+  #clip-library p { margin: 10px 0; color: #b8c8e0; }
+  #clip-list { display: grid; gap: 8px; margin: 12px 0; }
+  .clip-row { display: flex; align-items: center; gap: 10px; padding: 8px;
+    border: 1px solid #44566f; border-radius: 8px; overflow-wrap: anywhere; }
+  .clip-row label { flex: 1; margin: 0; font-size: 15px; font-weight: 400; }
+  .clip-row input { width: 20px; height: 20px; vertical-align: middle; }
+  .clip-row button { flex: 0 0 auto; background: #75393f; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { body { padding: 16px; } .buttons { grid-template-columns: repeat(2, 1fr); } }
@@ -93,7 +109,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.4.0</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.4.1</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -103,6 +119,19 @@
   </div>
   <label for="text">You said</label>
   <textarea id="text" placeholder="Your URL can fill this for you"></textarea>
+  <section id="clip-library" aria-labelledby="clip-library-title">
+    <h2 id="clip-library-title">Saved clips</h2>
+    <form id="clip-form">
+      <label for="clip-id">Clip ID<input id="clip-id" type="text" maxlength="64" pattern="[A-Za-z0-9_-]+" required placeholder="clip1"></label>
+      <label for="clip-file">Image or video<input id="clip-file" type="file" accept="image/*,video/*" required></label>
+      <label for="clip-seconds">Image seconds<input id="clip-seconds" type="number" min="0.1" max="3600" step="0.1" value="3"></label>
+      <button type="submit">Save clip</button>
+    </form>
+    <button id="save-text-clip" type="button">Save data URI from text field</button>
+    <p>Clips stay in this browser. Large videos may exceed browser storage.</p>
+    <div id="clip-list" aria-label="Stored clips"></div>
+    <button id="play-clips" type="button">Play selected clips</button>
+  </section>
   <label for="reply">Assistant reply</label>
   <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
   <div class="buttons" aria-label="Manual actions">
@@ -118,7 +147,7 @@
   <p id="status" role="status" aria-live="polite">Ready.</p>
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
   <details>
-    <summary>Help / About · v0.4.0</summary>
+    <summary>Help / About · v0.4.1</summary>
     <ul>
       <li><code>?minimal=0</code>: shows the full interface for debugging; absent or <code>minimal=1</code> shows only the two texts.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
@@ -133,6 +162,7 @@
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
       <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
+      <li>In the full interface (<code>?minimal=0</code>), save an image or video under the text field, select stored clips, and play them as a timeline.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -290,6 +320,32 @@
         if (window.localStorage.getItem(`${base}.part.${index}`) !== null) saved++;
       }
       return `Saved ${id} part ${part}/${total} (${saved}/${total} present).`;
+    }
+    function storeWholeMedia(id, dataUri, seconds) {
+      if (!validMediaId(id)) throw new Error('Clip ID must use 1–64 letters, numbers, _ or -.');
+      const match = dataUri.trim().match(/^data:((?:image|video)\/[a-z0-9.+-]+);base64,([\s\S]+)$/i);
+      if (!match) throw new Error('Choose an image or video file, or use a base64 data URI.');
+      const mime = match[1].toLowerCase();
+      const encoded = match[2].replaceAll(' ', '+').replace(/[\r\n\t]/g, '');
+      if (!/^[a-zA-Z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1 ||
+          (encoded.includes('=') && encoded.length % 4 !== 0)) {
+        throw new Error('The data URI contains invalid base64.');
+      }
+      if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 3600) {
+        throw new Error('Image seconds must be between 0.1 and 3600.');
+      }
+      const base = mediaStorageKey(id);
+      if (window.localStorage.getItem(`${base}.meta`) !== null) {
+        throw new Error('That clip ID is already stored. Delete it before replacing it.');
+      }
+      window.localStorage.setItem(`${base}.part.1`, encoded);
+      try {
+        window.localStorage.setItem(`${base}.meta`, JSON.stringify({ mime, total: 1, seconds }));
+      } catch (error) {
+        window.localStorage.removeItem(`${base}.part.1`);
+        throw error;
+      }
+      return `Saved ${id} (${mime}).`;
     }
     function deleteMedia(id) {
       if (!validMediaId(id)) throw new Error('Invalid media ID to delete.');
@@ -664,18 +720,32 @@
     }
     let displayedText;
     let displayedReply;
+    let displayedMinimal;
     function syncDisplay() {
-      if (displayedText === field.value && displayedReply === replyField.value) return;
+      const minimal = document.body.classList.contains('minimal');
+      if (displayedText === field.value && displayedReply === replyField.value &&
+          displayedMinimal === minimal) return;
       stopSpeech();
-      renderValue(displayText, field.value, 'text');
-      renderValue(displayReply, replyField.value, 'reply');
+      if (minimal) {
+        renderValue(displayText, field.value, 'text');
+        renderValue(displayReply, replyField.value, 'reply');
+      } else {
+        disposeMedia(displayText);
+        disposeMedia(displayReply);
+        displayText.textContent = '';
+        displayReply.textContent = '';
+      }
       displayedText = field.value;
       displayedReply = replyField.value;
+      displayedMinimal = minimal;
     }
     document.addEventListener('keydown', event => {
       if (event.key !== 'u' || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
           event.target.closest('input, textarea, select, [contenteditable]')) return;
-      document.body.classList.toggle('minimal');
+      if (document.body.classList.toggle('minimal')) {
+        disposeMedia(output);
+        output.textContent = '';
+      }
       syncDisplay();
     });
     const output = document.getElementById('output');
@@ -733,16 +803,122 @@
       status.textContent = text;
       status.classList.toggle('error', error);
     }
+    const clipForm = document.getElementById('clip-form');
+    const clipIdField = document.getElementById('clip-id');
+    const clipFileField = document.getElementById('clip-file');
+    const clipSecondsField = document.getElementById('clip-seconds');
+    const clipList = document.getElementById('clip-list');
+    function clipSeconds() { return Number(clipSecondsField.value); }
+    function refreshClipList(selectId = '') {
+      const selected = new Set(Array.from(clipList.querySelectorAll('input:checked'), input => input.value));
+      if (selectId) selected.add(selectId);
+      clipList.replaceChildren();
+      try {
+        const clips = [];
+        for (let index = 0; index < window.localStorage.length; index++) {
+          const key = window.localStorage.key(index);
+          const match = key?.match(/^urlAutofill\.media\.v1\.([a-zA-Z0-9_-]+)\.meta$/);
+          if (!match) continue;
+          let meta;
+          try { meta = JSON.parse(window.localStorage.getItem(key)); }
+          catch (error) { continue; }
+          if (!meta || !validMime(meta.mime) || !Number.isInteger(meta.total) ||
+              meta.total < 1 || meta.total > 1000) continue;
+          let parts = 0;
+          let length = 0;
+          const base = mediaStorageKey(match[1]);
+          for (let part = 1; part <= meta.total; part++) {
+            const data = window.localStorage.getItem(`${base}.part.${part}`);
+            if (data !== null) { parts++; length += data.length; }
+          }
+          clips.push({ id: match[1], mime: meta.mime, parts, total: meta.total, length });
+        }
+        clips.sort((a, b) => a.id.localeCompare(b.id));
+        if (!clips.length) { clipList.textContent = 'No clips saved yet.'; return; }
+        for (const clip of clips) {
+          const row = document.createElement('div');
+          row.className = 'clip-row';
+          const label = document.createElement('label');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = clip.id;
+          checkbox.checked = selected.has(clip.id);
+          checkbox.disabled = clip.parts !== clip.total;
+          const description = document.createElement('span');
+          description.textContent = ` ${clip.id} · ${clip.mime} · ${clip.parts}/${clip.total} parts · ${Math.round(clip.length * 0.75 / 1024)} KB`;
+          label.append(checkbox, description);
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.textContent = 'Delete';
+          remove.setAttribute('aria-label', `Delete ${clip.id}`);
+          remove.addEventListener('click', () => {
+            if (!window.confirm(`Delete stored clip ${clip.id}?`)) return;
+            try {
+              message(deleteMedia(clip.id));
+              refreshClipList();
+              if (field.value.startsWith('timeline:') &&
+                  field.value.slice('timeline:'.length).split(',').includes(clip.id)) {
+                displayedText = undefined;
+                syncDisplay();
+                disposeMedia(output);
+                output.textContent = '';
+              }
+            } catch (error) { message(error.message, true); }
+          });
+          row.append(label, remove);
+          clipList.append(row);
+        }
+      } catch (error) { clipList.textContent = 'Clip storage is unavailable in this browser.'; }
+    }
+    function clipError(error) {
+      message(error.name === 'QuotaExceededError' ? 'Browser storage is full. Delete a clip and try again.' :
+        error.message, true);
+    }
+    clipForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const file = clipFileField.files?.[0];
+      if (!file) { message('Choose an image or video file.', true); return; }
+      if (!validMime(file.type)) { message('Choose an image or video file.', true); return; }
+      const submit = clipForm.querySelector('button[type=submit]');
+      submit.disabled = true;
+      try {
+        const dataUri = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error('Could not read the file.'));
+          reader.readAsDataURL(file);
+        });
+        message(storeWholeMedia(clipIdField.value.trim(), dataUri, clipSeconds()));
+        clipFileField.value = '';
+        refreshClipList(clipIdField.value.trim());
+      } catch (error) { clipError(error); }
+      finally { submit.disabled = false; }
+    });
+    document.getElementById('save-text-clip').addEventListener('click', () => {
+      try {
+        message(storeWholeMedia(clipIdField.value.trim(), field.value, clipSeconds()));
+        refreshClipList(clipIdField.value.trim());
+      } catch (error) { clipError(error); }
+    });
+    document.getElementById('play-clips').addEventListener('click', () => {
+      const ids = Array.from(clipList.querySelectorAll('input:checked:not(:disabled)'), input => input.value);
+      if (!ids.length) { message('Select at least one complete clip.', true); return; }
+      field.value = `timeline:${ids.join(',')}`;
+      saveText();
+      render();
+    });
     function render() {
       syncDisplay();
       disposeMedia(output);
       output.textContent = '';
-      const spoken = document.createElement('div');
-      renderValue(spoken, field.value || 'No text to render.', 'text');
-      const reply = document.createElement('div');
-      reply.className = 'rendered-reply';
-      renderValue(reply, replyField.value || 'No assistant reply to render.', 'reply');
-      output.append(spoken, reply);
+      if (!document.body.classList.contains('minimal')) {
+        const spoken = document.createElement('div');
+        renderValue(spoken, field.value || 'No text to render.', 'text');
+        const reply = document.createElement('div');
+        reply.className = 'rendered-reply';
+        renderValue(reply, replyField.value || 'No assistant reply to render.', 'reply');
+        output.append(spoken, reply);
+      }
       message('Text rendered.');
     }
     function clear() {
@@ -915,6 +1091,7 @@
       if (changed) saveMemory();
       else showMemory();
       syncDisplay();
+      refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
       if (params.has('action') || params.get('speak') === '1') {
         const name = params.has('action') ? params.get('action').trim().toLowerCase() : 'speak';

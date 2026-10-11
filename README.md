@@ -1,10 +1,12 @@
 # URL Autofill
 
-Car-browser helper page (v0.4.0). Open with query params, for example:
+Car-browser helper page (v0.4.1). Open with query params, for example:
 
 `https://plachenko.github.io/url-autofill/?text=hi&reply=hello&action=speak`
 
 ## Saved media timeline
+
+Open `?minimal=0` to use the clip library directly below the text field. Enter a clip ID, choose an image or video file, and select **Save clip**. You can also paste a base64 image or video data URI into the text field and choose **Save data URI from text field**. Select clips in the list and choose **Play selected clips** to render them in order. The library also shows clips assembled through the URL interface and lets you delete them.
 
 Send each base64 chunk in a separate URL to the same browser and origin:
 
