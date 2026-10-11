@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.3.3</title>
+<title>URL Autofill · v0.4.0</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -68,6 +68,18 @@
     width: 100%; font: 14px/1.5 system-ui, sans-serif; }
   .image-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
   .image-controls input { flex: 1; min-width: 40px; }
+  .timeline-player { display: inline-flex; flex-direction: column; max-width: 100%;
+    background: #182130; white-space: normal; }
+  .timeline-player video, .timeline-player img { max-width: 100%; max-height: 70vh; }
+  .timeline-player:fullscreen { width: 100%; height: 100%; max-width: none;
+    align-items: center; justify-content: center; }
+  .timeline-player:fullscreen video, .timeline-player:fullscreen img { flex: 1 1 auto;
+    width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: none; max-height: none;
+    object-fit: contain; }
+  .timeline-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    width: 100%; padding: 6px; font: 14px/1.5 system-ui, sans-serif; }
+  .timeline-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
+  .timeline-controls input { flex: 1; min-width: 80px; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { body { padding: 16px; } .buttons { grid-template-columns: repeat(2, 1fr); } }
@@ -81,7 +93,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.3.3</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.4.0</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -106,7 +118,7 @@
   <p id="status" role="status" aria-live="polite">Ready.</p>
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
   <details>
-    <summary>Help / About · v0.3.3</summary>
+    <summary>Help / About · v0.4.0</summary>
     <ul>
       <li><code>?minimal=0</code>: shows the full interface for debugging; absent or <code>minimal=1</code> shows only the two texts.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
@@ -119,6 +131,8 @@
       <li><code>reply</code>: fills the Assistant reply field. URL-encode special characters.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
+      <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
+      <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -235,11 +249,219 @@
       if (/^data:image\/[a-z0-9.+-]+(;[^,]*)?,/i.test(trimmed)) return 'image';
       return null;
     }
-    const imageSessions = new Map();
-    function disposeImages(target) {
-      for (const [element, dispose] of imageSessions) {
+    const mediaSessions = new Map();
+    function disposeMedia(target) {
+      for (const [element, dispose] of mediaSessions) {
         if (element === target || target.contains(element)) dispose();
       }
+    }
+    const mediaStorageKey = id => `urlAutofill.media.v1.${id}`;
+    const validMediaId = id => /^[a-zA-Z0-9_-]{1,64}$/.test(id);
+    const validMime = mime => /^(image|video)\/[a-z0-9.+-]+$/i.test(mime);
+    function storeMediaPart(params) {
+      const id = params.get('store');
+      if (!validMediaId(id)) throw new Error('Store ID must use 1–64 letters, numbers, _ or -.');
+      const part = Number(params.get('part'));
+      const total = Number(params.get('total'));
+      if (!Number.isInteger(part) || !Number.isInteger(total) || part < 1 || total < 1 ||
+          part > total || total > 1000) throw new Error('Use a part number from 1 to total (maximum 1000).');
+      let data = params.get('data');
+      if (!data) throw new Error('Missing base64 data chunk.');
+      data = data.replaceAll(' ', '+'); // URLSearchParams decodes an unescaped + as a space.
+      const prefix = data.match(/^data:((?:image|video)\/[a-z0-9.+-]+);base64,/i);
+      if (prefix) data = data.slice(prefix[0].length);
+      if (!data) throw new Error('Missing base64 data chunk.');
+      if (!/^[a-zA-Z0-9+/]*={0,2}$/.test(data)) throw new Error('Chunk must contain base64 data.');
+      const base = mediaStorageKey(id);
+      const previous = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
+      const mime = (params.get('mime') || prefix?.[1] || previous?.mime || '').toLowerCase();
+      if (!validMime(mime)) throw new Error('Supply an image or video MIME type, such as image/png.');
+      if (previous && (previous.mime !== mime || previous.total !== total)) {
+        throw new Error('Stored type or part count differs. Delete this ID before replacing it.');
+      }
+      const seconds = params.has('seconds') ? Number(params.get('seconds')) : previous?.seconds ?? 3;
+      if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 3600) {
+        throw new Error('Image seconds must be between 0.1 and 3600.');
+      }
+      window.localStorage.setItem(`${base}.meta`, JSON.stringify({ mime, total, seconds }));
+      window.localStorage.setItem(`${base}.part.${part}`, data);
+      let saved = 0;
+      for (let index = 1; index <= total; index++) {
+        if (window.localStorage.getItem(`${base}.part.${index}`) !== null) saved++;
+      }
+      return `Saved ${id} part ${part}/${total} (${saved}/${total} present).`;
+    }
+    function deleteMedia(id) {
+      if (!validMediaId(id)) throw new Error('Invalid media ID to delete.');
+      const base = mediaStorageKey(id);
+      const meta = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
+      if (meta && Number.isInteger(meta.total) && meta.total <= 1000) {
+        for (let index = 1; index <= meta.total; index++) {
+          window.localStorage.removeItem(`${base}.part.${index}`);
+        }
+      }
+      window.localStorage.removeItem(`${base}.meta`);
+      return `Deleted stored media ${id}.`;
+    }
+    function loadMedia(id) {
+      if (!validMediaId(id)) throw new Error(`Invalid timeline ID: ${id}.`);
+      const base = mediaStorageKey(id);
+      const meta = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
+      if (!meta || !validMime(meta.mime) || !Number.isInteger(meta.total) ||
+          meta.total < 1 || meta.total > 1000) throw new Error(`No stored media named ${id}.`);
+      const parts = [];
+      for (let index = 1; index <= meta.total; index++) {
+        const part = window.localStorage.getItem(`${base}.part.${index}`);
+        if (part === null) throw new Error(`${id} is missing part ${index}/${meta.total}.`);
+        parts.push(part);
+      }
+      const encoded = parts.join('');
+      if (!/^[a-zA-Z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1 ||
+          (encoded.includes('=') && encoded.length % 4 !== 0)) {
+        throw new Error(`${id} does not form valid base64 data.`);
+      }
+      return { id, type: meta.mime.startsWith('video/') ? 'video' : 'image',
+        src: `data:${meta.mime};base64,${encoded}`,
+        seconds: Number.isFinite(meta.seconds) ? meta.seconds : 3 };
+    }
+    function renderTimeline(target, names) {
+      let items;
+      try {
+        const ids = names.split(',').map(id => id.trim()).filter(Boolean);
+        if (!ids.length || ids.length > 100) throw new Error('Timeline needs 1–100 media IDs.');
+        items = ids.map(loadMedia);
+      } catch (error) { target.textContent = error.message; return; }
+      target.textContent = '';
+      const viewer = document.createElement('div');
+      viewer.className = 'timeline-player';
+      const image = document.createElement('img');
+      image.alt = 'Timeline image';
+      const video = document.createElement('video');
+      video.playsInline = true;
+      video.muted = true;
+      video.controls = true;
+      video.preload = 'auto';
+      const controls = document.createElement('div');
+      controls.className = 'timeline-controls';
+      const previous = document.createElement('button');
+      previous.type = 'button';
+      previous.textContent = 'Previous';
+      const play = document.createElement('button');
+      play.type = 'button';
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.textContent = 'Next';
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = String(items.length - 1);
+      slider.step = '1';
+      slider.setAttribute('aria-label', 'Timeline item');
+      const position = document.createElement('span');
+      const fullscreen = document.createElement('button');
+      fullscreen.type = 'button';
+      fullscreen.textContent = 'Toggle fullscreen';
+      fullscreen.disabled = typeof requestFullscreen(viewer) !== 'function';
+      controls.append(previous, play, next, slider, position, fullscreen);
+      viewer.append(image, video, controls);
+      target.append(viewer);
+      let index = 0;
+      let playing = true;
+      let finished = false;
+      let imageLoaded = false;
+      let imageTimer;
+      let disposed = false;
+      let revision = 0;
+      function dispose() {
+        disposed = true;
+        window.clearTimeout(imageTimer);
+        video.pause();
+        video.removeAttribute('src');
+        image.removeAttribute('src');
+        mediaSessions.delete(target);
+      }
+      mediaSessions.set(target, dispose);
+      function update() {
+        play.textContent = playing ? 'Pause' : 'Play';
+        slider.value = String(index);
+        position.textContent = `${index + 1}/${items.length} · ${items[index].id}`;
+      }
+      function advance() {
+        if (disposed || !playing) return;
+        if (index + 1 < items.length) show(index + 1);
+        else { playing = false; finished = true; update(); }
+      }
+      function scheduleImage() {
+        window.clearTimeout(imageTimer);
+        if (playing && imageLoaded && items[index].type === 'image') {
+          imageTimer = window.setTimeout(advance, items[index].seconds * 1000);
+        }
+      }
+      function startVideo() {
+        const request = revision;
+        void video.play().catch(() => {
+          if (disposed || request !== revision) return;
+          playing = false;
+          update();
+        });
+      }
+      function show(nextIndex) {
+        revision++;
+        window.clearTimeout(imageTimer);
+        video.pause();
+        video.removeAttribute('src');
+        image.removeAttribute('src');
+        index = nextIndex;
+        finished = false;
+        imageLoaded = false;
+        const item = items[index];
+        image.hidden = item.type !== 'image';
+        video.hidden = item.type !== 'video';
+        update();
+        if (item.type === 'image') image.src = item.src;
+        else {
+          video.src = item.src;
+          if (playing) startVideo();
+        }
+      }
+      image.addEventListener('load', () => {
+        if (disposed || items[index].type !== 'image') return;
+        imageLoaded = true;
+        scheduleImage();
+      });
+      image.addEventListener('error', () => {
+        if (disposed || items[index].type !== 'image') return;
+        playing = false;
+        update();
+      });
+      video.addEventListener('play', () => {
+        if (!disposed && items[index].type === 'video') { playing = true; update(); }
+      });
+      video.addEventListener('ended', () => {
+        if (items[index].type === 'video' && video.ended) advance();
+      });
+      video.addEventListener('error', () => {
+        if (disposed || items[index].type !== 'video') return;
+        playing = false;
+        update();
+      });
+      previous.addEventListener('click', () => show(Math.max(0, index - 1)));
+      next.addEventListener('click', () => show(Math.min(items.length - 1, index + 1)));
+      slider.addEventListener('input', () => show(Number(slider.value)));
+      play.addEventListener('click', () => {
+        playing = !playing;
+        if (!playing) {
+          window.clearTimeout(imageTimer);
+          video.pause();
+        } else if (finished) show(0);
+        else if (items[index].type === 'image') scheduleImage();
+        else startVideo();
+        update();
+      });
+      fullscreen.addEventListener('click', () => {
+        void changeFullscreen(fullscreenElement() === viewer ? null : viewer);
+      });
+      show(0);
     }
     async function enhanceImage(target, fallback, fallbackViewer, uri) {
       if (!('ImageDecoder' in window)) return;
@@ -260,9 +482,9 @@
         window.clearTimeout(timer);
         controller.abort();
         if (decoder) decoder.close();
-        imageSessions.delete(target);
+        mediaSessions.delete(target);
       };
-      imageSessions.set(target, dispose);
+      mediaSessions.set(target, dispose);
       try {
         const mime = uri.slice(5, uri.search(/[;,]/)).toLowerCase();
         if (!await window.ImageDecoder.isTypeSupported(mime) || disposed) {
@@ -402,7 +624,11 @@
       }
     }
     function renderValue(target, value, source) {
-      disposeImages(target);
+      disposeMedia(target);
+      if (value.trim().startsWith('timeline:')) {
+        renderTimeline(target, value.trim().slice('timeline:'.length));
+        return;
+      }
       const type = mediaType(value);
       if (!type) { words(target, value, source); return; }
       target.textContent = '';
@@ -509,7 +735,7 @@
     }
     function render() {
       syncDisplay();
-      disposeImages(output);
+      disposeMedia(output);
       output.textContent = '';
       const spoken = document.createElement('div');
       renderValue(spoken, field.value || 'No text to render.', 'text');
@@ -522,7 +748,7 @@
     function clear() {
       field.value = '';
       saveText();
-      disposeImages(output);
+      disposeMedia(output);
       output.textContent = '';
       stopSpeech();
       message('Text cleared.');
@@ -532,7 +758,10 @@
       stopSpeech();
       const source = replyField.value ? 'reply' : 'text';
       const text = source === 'reply' ? replyField.value : field.value;
-      if (mediaType(text)) { message('Media is skipped by speech.'); return; }
+      if (mediaType(text) || text.trim().startsWith('timeline:')) {
+        message('Media is skipped by speech.');
+        return;
+      }
       const tokens = Array.from(text.matchAll(/\S+/g));
       if (!tokens.length) { message('Add some text to speak first.', true); return; }
       const session = speechSession;
@@ -647,7 +876,7 @@
       saveMemory();
     });
     document.addEventListener('click', event => {
-      if (event.target.closest('#page-fullscreen, .image-controls, video, audio')) return;
+      if (event.target.closest('#page-fullscreen, .image-controls, .timeline-player, video, audio')) return;
       if (document.body.classList.contains('minimal')) run('speak');
     });
     function startup() {
@@ -656,12 +885,21 @@
       loadMemory();
       const params = new URLSearchParams(window.location.search);
       document.body.classList.toggle('minimal', params.get('minimal') !== '0');
+      let mediaMessage = '';
+      let mediaError = false;
+      try {
+        if (params.has('delete')) mediaMessage = deleteMedia(params.get('delete'));
+        if (params.has('store')) mediaMessage = storeMediaPart(params);
+      } catch (error) {
+        mediaMessage = error.name === 'QuotaExceededError' ? 'Browser storage is full.' : error.message;
+        mediaError = true;
+      }
       let changed = false;
       for (const key of ['memory', 'clip']) {
         if (params.has(key)) { memoryState[key] = params.get(key); changed = true; }
       }
-      if (params.has('text')) {
-        field.value = params.get('text');
+      if (params.has('timeline') || params.has('text')) {
+        field.value = params.has('timeline') ? `timeline:${params.get('timeline')}` : params.get('text');
         memoryState.text = field.value;
         changed = true;
       } else {
@@ -677,6 +915,7 @@
       if (changed) saveMemory();
       else showMemory();
       syncDisplay();
+      if (mediaMessage) message(mediaMessage, mediaError);
       if (params.has('action') || params.get('speak') === '1') {
         const name = params.has('action') ? params.get('action').trim().toLowerCase() : 'speak';
         const execute = () => {
