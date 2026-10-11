@@ -127,6 +127,9 @@
     min-height: 30px; padding: 0; border-radius: 4px; color: #10151e;
     background: #ffd976; border-color: #ffd976; cursor: ew-resize;
     touch-action: none; pointer-events: auto; }
+  #track-playhead.locked button { box-shadow: 0 0 0 2px #e74848; }
+  #render-frame { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 3;
+    background: #e74848; box-shadow: 0 0 5px #e74848; pointer-events: none; }
   .clip-tile { position: absolute; top: 0; min-height: 106px; overflow: hidden;
     background: #284e82; border: 1px solid #7799cb; border-radius: 7px; }
   .clip-tile.dragging { opacity: .6; z-index: 2; }
@@ -141,9 +144,13 @@
   #compositor-status { color: #b8c8e0; overflow-wrap: anywhere; }
   #compositor-status.error { color: #ffb4b4; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
-  body { padding: 0; height: 100dvh; overflow: hidden; }
-  #stage { width: 100%; max-width: none; height: calc(100dvh - var(--timeline-height, 244px));
-    min-height: 0; position: relative; overflow: hidden; background: #10151e; }
+  body { padding: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  #stage { flex: 1 1 auto; width: 100%; max-width: none; min-height: 0;
+    position: relative; overflow: hidden; background: #10151e; }
+  #render-surface { position: absolute; inset: 0; overflow: hidden; }
+  body.preview-pinned #render-surface { inset: auto; left: 50%; top: 50%;
+    width: var(--pinned-width); height: var(--pinned-height);
+    transform: translate(-50%, -50%) scale(var(--pinned-scale)); }
   #output, #composition-preview, #minimal-display { position: absolute; inset: 0; width: 100%; height: 100%;
     min-height: 0; padding: 0; border: 0; border-radius: 0; overflow: auto; }
   #output { display: flex; align-items: center; justify-content: center; flex-direction: column;
@@ -153,30 +160,47 @@
   #output .rendered-reply { flex: 0 1 auto; max-height: 30%; width: 100%; margin: 0;
     padding: 8px 16px; overflow: auto; }
   #output:empty::before { content: 'Render preview'; font-size: 18px; color: #9cabc0; }
-  #composition-preview { display: none; place-items: center; background: #10151e; }
+  #composition-preview { display: none; place-items: center; grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr); background: #10151e; }
   body.has-composition #composition-preview { display: grid; }
   body.has-composition #output { display: none; }
   #composition-preview img, #composition-preview video { width: 100%; height: 100%; max-width: none;
-    max-height: none; object-fit: contain; }
+    max-height: none; min-width: 0; min-height: 0; grid-area: 1 / 1; object-fit: cover; }
+  #composition-empty { grid-area: 1 / 1; }
   #output .rendered-media, #output .timeline-player video, #output .timeline-player img {
-    width: 100%; max-width: none; max-height: none; object-fit: contain; }
+    width: 100%; max-width: none; max-height: none; object-fit: cover; }
   #output .static-image, #output .animated-image, #output .timeline-player {
     width: 100%; height: 100%; max-width: none; min-height: 0; justify-content: center; }
   #output .static-image img, #output .animated-image canvas, #output .timeline-player video,
-  #output .timeline-player img { flex: 1 1 auto; min-height: 0; height: 100%; object-fit: contain; }
+  #output .timeline-player img { flex: 1 1 auto; min-height: 0; height: 100%; object-fit: cover; }
   #minimal-display { display: none; padding: 64px 24px 24px; text-align: center; }
   body.minimal #minimal-display { display: flex; flex-direction: column; align-items: center;
     justify-content: center; }
-  body.minimal #stage { height: 100dvh; }
+  body.minimal #stage { flex: 1 1 auto; }
   body.minimal #compositor { display: none; }
-  #compositor { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; width: 100%;
-    height: var(--timeline-height, 244px); margin: 0; padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  #compositor { position: relative; z-index: 20; flex: 0 0 var(--timeline-height, 244px); width: 100%;
+    min-height: 0; margin: 0; padding: 8px 12px max(8px, env(safe-area-inset-bottom));
     display: flex; flex-direction: column; overflow: hidden; border-radius: 0; border-width: 1px 0 0; }
-  #compositor h2 { font-size: 16px; margin: 0; }
-  #composition-scrubber { flex: 0 0 auto; margin: 5px 0 0; }
-  #composition-time { font-size: 13px; }
-  .compositor-actions { position: absolute; top: 8px; right: 12px; margin: 0; gap: 6px; }
+  #compositor h2 { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  #timeline-controls { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+    flex: 0 0 auto; }
+  #composition-scrubber { appearance: none; flex: 1 1 auto; min-width: 0; height: 10px;
+    margin: 0; border-radius: 5px; cursor: pointer;
+    background: linear-gradient(to right, #ffd976 var(--progress, 0%), #44566f var(--progress, 0%)); }
+  #composition-scrubber::-webkit-slider-thumb { appearance: none; width: 13px; height: 20px;
+    border: 2px solid #10151e; border-radius: 4px; background: #ffd976; }
+  #composition-scrubber::-moz-range-thumb { width: 13px; height: 20px;
+    border: 2px solid #10151e; border-radius: 4px; background: #ffd976; }
+  #composition-time { flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
+  .compositor-actions { margin: 0; display: contents; }
   #compositor button { min-height: 32px; padding: 3px 8px; font-size: 13px; }
+  #timeline-toggle, #pin-preview { white-space: nowrap; }
+  body.render-focus #compositor { flex-basis: calc(44px + env(safe-area-inset-bottom));
+    padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom));
+    opacity: .3; transition: opacity .15s ease; }
+  body.render-focus #compositor:hover, body.render-focus #compositor:focus-within { opacity: 1; }
+  body.render-focus #track-list, body.render-focus #compositor-status { display: none; }
   #track-list { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-color: #7085a1 #10151e; }
   #track-content { padding-bottom: 4px; }
   .track-lane { min-height: 90px; }
@@ -215,8 +239,8 @@
   @media (max-width: 600px) { :root { --timeline-height: 230px; }
     .buttons { grid-template-columns: repeat(2, 1fr); }
     #compositor { padding-inline: 8px; }
-    #compositor h2 { font-size: 14px; }
-    #compositor .compositor-actions button { font-size: 12px; padding-inline: 5px; }
+    #compositor button { font-size: 12px; padding-inline: 5px; }
+    #composition-time { display: none; }
     #compositor-status { display: none; }
   }
 </style>
@@ -290,7 +314,7 @@
       <li>Store a base64 image or video in pieces with <code>?s=clip1&amp;p=1&amp;n=2&amp;f=image/png&amp;d=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>h=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?l=clip1,clip2</code>. The player advances after each video or image. Use <code>?x=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
       <li>Share compositor tracks with <code>?tr=clip1@0,clip2@3|clip3@1&amp;at=2.50</code>. Each <code>@</code> value is a start second; <code>at</code> is the scrubber position. The receiving browser needs the saved clips.</li>
-      <li>Use the menu to save clips. The large preview shows the current compositor frame when tracks contain clips. Drag tiles in the bottom timeline to set their start second or move them between tracks. The bottom track appears over earlier tracks. Drag the yellow playhead or click the time ruler to scrub. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
+      <li>Use the menu to save clips. The large preview shows the clip under the yellow playhead. The red line on its tile marks the current rendered frame. Tap the top of the yellow playhead to lock or unlock the red line; drag the yellow handle or click the ruler to scrub. The bottom strip can expand into tracks or collapse for render focus. Pin locks the preview's internal dimensions while it still fills the available area. Drag tiles to set their start second or move them between tracks. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
       <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -314,19 +338,23 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
+  <div id="render-surface">
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
     <div id="composition-preview" aria-label="Composition preview">
       <img id="composition-image" alt="Current composition frame" hidden>
       <video id="composition-video" playsinline muted hidden></video>
       <span id="composition-empty">Add clips to a track to preview them.</span>
     </div>
+  </div>
 </main>
 <section id="compositor" aria-labelledby="compositor-title">
     <h2 id="compositor-title">Video compositor</h2>
-    <input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds">
-    <div id="composition-time">0.00 / 0.00 seconds</div>
-    <div class="compositor-actions">
-      <button id="composition-play" type="button">Play</button>
+    <div id="timeline-controls">
+      <div class="compositor-actions"><button id="composition-play" type="button">Play</button></div>
+      <input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds">
+      <div id="composition-time">0.00 / 0.00 seconds</div>
+      <button id="pin-preview" type="button" aria-pressed="false">Pin</button>
+      <button id="timeline-toggle" type="button" aria-controls="track-list" aria-expanded="false">Expand tracks</button>
     </div>
     <div id="track-list" aria-label="Composition tracks"><div id="track-content"></div></div>
     <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
@@ -1103,20 +1131,101 @@
     const compositionScrubber = document.getElementById('composition-scrubber');
     const compositionTimeLabel = document.getElementById('composition-time');
     const compositionPlay = document.getElementById('composition-play');
+    const timelineToggle = document.getElementById('timeline-toggle');
+    const pinPreviewButton = document.getElementById('pin-preview');
     const compositorStatus = document.getElementById('compositor-status');
     const compositorKey = 'urlAutofill.compositor.v1';
+    const sessionKey = 'urlAutofill.session.v1';
+    const session = { playheadSeconds: 0, renderFrameSeconds: 0, lockRenderFrame: true };
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(sessionKey));
+      if (saved && Number.isFinite(saved.playheadSeconds) && saved.playheadSeconds >= 0)
+        session.playheadSeconds = saved.playheadSeconds;
+      if (saved && Number.isFinite(saved.renderFrameSeconds) && saved.renderFrameSeconds >= 0)
+        session.renderFrameSeconds = saved.renderFrameSeconds;
+      if (saved && typeof saved.lockRenderFrame === 'boolean')
+        session.lockRenderFrame = saved.lockRenderFrame;
+    } catch (error) { /* Start a fresh timeline session. */ }
+    let lastSessionSave = 0;
+    function saveSession(force = false) {
+      const now = Date.now();
+      if (!force && now - lastSessionSave < 500) return;
+      lastSessionSave = now;
+      try { window.localStorage.setItem(sessionKey, JSON.stringify(session)); }
+      catch (error) { /* Playback still works without browser storage. */ }
+    }
+    window.addEventListener('pagehide', () => saveSession(true));
+    const focusStorageKey = 'urlAutofill.renderFocus.v1';
+    let renderFocus = true;
+    try { renderFocus = window.localStorage.getItem(focusStorageKey) !== '0'; }
+    catch (error) { /* Keep the compact timeline when storage is unavailable. */ }
+    function setRenderFocus(focused) {
+      renderFocus = focused;
+      document.body.classList.toggle('render-focus', focused);
+      timelineToggle.textContent = focused ? 'Expand tracks' : 'Focus render';
+      timelineToggle.setAttribute('aria-expanded', String(!focused));
+      try { window.localStorage.setItem(focusStorageKey, focused ? '1' : '0'); }
+      catch (error) { /* The timeline still expands without browser storage. */ }
+    }
+    timelineToggle.addEventListener('click', () => setRenderFocus(!renderFocus));
+    const stage = document.getElementById('stage');
+    const renderSurface = document.getElementById('render-surface');
+    const pinStorageKey = 'urlAutofill.previewResolution.v1';
+    let pinnedResolution = null;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(pinStorageKey));
+      if (saved && Number.isFinite(saved.width) && Number.isFinite(saved.height) &&
+          saved.width > 0 && saved.height > 0) pinnedResolution = saved;
+    } catch (error) { /* Start with a responsive preview. */ }
+    function updatePinnedScale() {
+      if (!pinnedResolution) return;
+      const scale = Math.max(stage.clientWidth / pinnedResolution.width,
+        stage.clientHeight / pinnedResolution.height);
+      renderSurface.style.setProperty('--pinned-width', `${pinnedResolution.width}px`);
+      renderSurface.style.setProperty('--pinned-height', `${pinnedResolution.height}px`);
+      renderSurface.style.setProperty('--pinned-scale', String(scale || 1));
+    }
+    function setPinnedResolution(resolution) {
+      pinnedResolution = resolution;
+      document.body.classList.toggle('preview-pinned', Boolean(resolution));
+      pinPreviewButton.textContent = resolution ? 'Unpin' : 'Pin';
+      pinPreviewButton.setAttribute('aria-pressed', String(Boolean(resolution)));
+      pinPreviewButton.title = resolution ?
+        `Pinned at ${resolution.width} × ${resolution.height} pixels` : 'Pin preview resolution';
+      if (resolution) updatePinnedScale();
+      else {
+        renderSurface.style.removeProperty('--pinned-width');
+        renderSurface.style.removeProperty('--pinned-height');
+        renderSurface.style.removeProperty('--pinned-scale');
+      }
+      try {
+        if (resolution) window.localStorage.setItem(pinStorageKey, JSON.stringify(resolution));
+        else window.localStorage.removeItem(pinStorageKey);
+      } catch (error) { /* Pinning still works without browser storage. */ }
+    }
+    pinPreviewButton.addEventListener('click', () => setPinnedResolution(pinnedResolution ? null : {
+      width: Math.max(1, stage.clientWidth), height: Math.max(1, stage.clientHeight)
+    }));
+    setRenderFocus(renderFocus);
+    setPinnedResolution(pinnedResolution);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(updatePinnedScale).observe(stage);
+    else window.addEventListener('resize', updatePinnedScale);
     let tracks = [[]];
     let activeTrack = 0;
     let compositionItems = [];
     let compositionDuration = 0;
-    let compositionTime = 0;
     let compositionPlaying = false;
     let compositionFrame = 0;
     let compositionStarted = 0;
     let compositionRevision = 0;
     let visibleItem = null;
+    const renderFrameMarker = document.createElement('div');
+    renderFrameMarker.id = 'render-frame';
     let pendingClipFocus = null;
     const clipDetails = new Map();
+    compositionVideo.addEventListener('ended', () => {
+      if (compositionPlaying && !session.lockRenderFrame) stopComposition();
+    });
     function compositorMessage(text, error = false) {
       compositorStatus.textContent = text;
       compositorStatus.classList.toggle('error', error);
@@ -1161,10 +1270,26 @@
       window.cancelAnimationFrame(compositionFrame);
       compositionVideo.pause();
       compositionPlay.textContent = 'Play';
+      saveSession(true);
+    }
+    function syncFrameLockButton() {
+      if (!trackPlayhead) return;
+      trackPlayhead.classList.toggle('locked', session.lockRenderFrame);
+      const handle = trackPlayhead.firstElementChild;
+      handle.textContent = session.lockRenderFrame ? '◆' : '▼';
+      handle.setAttribute('aria-label', `Track playhead in seconds; frame ${session.lockRenderFrame ? 'locked' : 'unlocked'}. Press Enter to toggle lock`);
+      handle.title = session.lockRenderFrame ? 'Unlock red render-frame line' : 'Lock red render-frame line to playhead';
+    }
+    function toggleFrameLock() {
+      session.lockRenderFrame = !session.lockRenderFrame;
+      if (session.lockRenderFrame) session.renderFrameSeconds = session.playheadSeconds;
+      syncFrameLockButton();
+      syncCompositionPreview(true);
+      saveSession(true);
     }
     function syncCompositionPreview(seek = false) {
       const active = compositionItems.filter(entry =>
-        compositionTime >= entry.start && compositionTime < entry.end)
+        session.playheadSeconds >= entry.start && session.playheadSeconds < entry.end)
         .sort((a, b) => b.track - a.track || b.start - a.start)[0] || null;
       if (active !== visibleItem) {
         compositionVideo.pause();
@@ -1179,55 +1304,74 @@
           compositionVideo.src = active.item.src;
           compositionVideo.onloadedmetadata = () => {
             if (visibleItem !== active) return;
-            compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, compositionTime - active.start));
+            compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, session.playheadSeconds - active.start));
+            session.renderFrameSeconds = session.lockRenderFrame ?
+              session.playheadSeconds : active.start + compositionVideo.currentTime;
+            syncCompositionPreview();
             if (compositionPlaying) void compositionVideo.play().catch(() => stopComposition());
           };
           seek = true;
         }
       }
       if (active?.item.type === 'video' && compositionVideo.readyState >= 1) {
-        const offset = compositionTime - active.start;
-        if (seek || Math.abs(compositionVideo.currentTime - offset) > .35) {
+        const offset = session.playheadSeconds - active.start;
+        if (seek || (session.lockRenderFrame && Math.abs(compositionVideo.currentTime - offset) > .35)) {
           compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, offset));
         }
         if (compositionPlaying && compositionVideo.paused) void compositionVideo.play().catch(() => stopComposition());
         if (!compositionPlaying && !compositionVideo.paused) compositionVideo.pause();
+        session.renderFrameSeconds = session.lockRenderFrame ?
+          session.playheadSeconds : active.start + compositionVideo.currentTime;
       }
-      compositionScrubber.value = String(compositionTime);
-      compositionTimeLabel.textContent = `${compositionTime.toFixed(2)} / ${compositionDuration.toFixed(2)} seconds`;
+      if (active?.item.type === 'image')
+        session.renderFrameSeconds = session.lockRenderFrame ? session.playheadSeconds : active.start;
+      if (active?.tile) {
+        active.tile.append(renderFrameMarker);
+        const frameOffset = Math.max(0, Math.min(active.item.duration,
+          session.renderFrameSeconds - active.start));
+        renderFrameMarker.style.left = `${Math.max(0, Math.min(active.tile.clientWidth - 2,
+          frameOffset * timelineScale))}px`;
+      } else renderFrameMarker.remove();
+      compositionScrubber.value = String(session.playheadSeconds);
+      compositionScrubber.style.setProperty('--progress', `${compositionDuration ?
+        session.playheadSeconds / compositionDuration * 100 : 0}%`);
+      compositionTimeLabel.textContent = `${session.playheadSeconds.toFixed(2)}/${compositionDuration.toFixed(2)}s`;
+      compositionScrubber.setAttribute('aria-valuetext', `${session.playheadSeconds.toFixed(2)} of ${compositionDuration.toFixed(2)} seconds`);
       if (trackPlayhead) {
-        const x = trackLabelWidth + compositionTime * timelineScale;
+        const x = trackLabelWidth + session.playheadSeconds * timelineScale;
         trackPlayhead.style.left = `${x}px`;
         const handle = trackPlayhead.firstElementChild;
         handle.setAttribute('aria-valuemax', String(compositionDuration));
-        handle.setAttribute('aria-valuenow', compositionTime.toFixed(2));
-        handle.setAttribute('aria-valuetext', `${compositionTime.toFixed(2)} seconds`);
+        handle.setAttribute('aria-valuenow', session.playheadSeconds.toFixed(2));
+        handle.setAttribute('aria-valuetext', `${session.playheadSeconds.toFixed(2)} seconds`);
         if (trackList.clientWidth && (x < trackList.scrollLeft + trackLabelWidth ||
             x > trackList.scrollLeft + trackList.clientWidth - 16)) {
           trackList.scrollLeft = Math.max(0, x - trackList.clientWidth / 2);
         }
       }
+      saveSession();
     }
     function setCompositionTime(seconds, seek = true) {
-      compositionTime = Math.max(0, Math.min(compositionDuration, seconds));
-      if (compositionPlaying) compositionStarted = performance.now() - compositionTime * 1000;
+      session.playheadSeconds = Math.max(0, Math.min(compositionDuration, seconds));
+      if (compositionPlaying) compositionStarted = performance.now() - session.playheadSeconds * 1000;
       syncCompositionPreview(seek);
+      saveSession(true);
     }
     function compositionTick(now) {
       if (!compositionPlaying) return;
-      compositionTime = Math.min(compositionDuration, (now - compositionStarted) / 1000);
-      if (compositionTime >= compositionDuration) stopComposition();
+      session.playheadSeconds = Math.min(compositionDuration, (now - compositionStarted) / 1000);
+      if (session.playheadSeconds >= compositionDuration) stopComposition();
       syncCompositionPreview();
       if (compositionPlaying) compositionFrame = window.requestAnimationFrame(compositionTick);
     }
     compositionPlay.addEventListener('click', () => {
       if (compositionPlaying) { stopComposition(); syncCompositionPreview(); return; }
       if (!compositionDuration) { compositorMessage('Add a complete clip to a track first.', true); return; }
-      if (compositionTime >= compositionDuration) setCompositionTime(0);
+      if (session.playheadSeconds >= compositionDuration) setCompositionTime(0);
       compositionPlaying = true;
-      compositionStarted = performance.now() - compositionTime * 1000;
+      compositionStarted = performance.now() - session.playheadSeconds * 1000;
       compositionPlay.textContent = 'Pause';
-      syncCompositionPreview();
+      syncCompositionPreview(true);
       compositionFrame = window.requestAnimationFrame(compositionTick);
     });
     compositionScrubber.addEventListener('input', () => setCompositionTime(Number(compositionScrubber.value)));
@@ -1244,10 +1388,10 @@
       url.search = '';
       url.searchParams.set('tr', tracks.map(track =>
         track.map(clip => `${clip.id}@${clip.start.toFixed(2)}`).join(',')).join('|'));
-      url.searchParams.set('at', compositionTime.toFixed(2));
+      url.searchParams.set('at', session.playheadSeconds.toFixed(2));
       try {
         window.history.replaceState(null, '', url);
-        compositorMessage(`Position ${compositionTime.toFixed(2)} seconds is in the URL.`);
+        compositorMessage(`Position ${session.playheadSeconds.toFixed(2)} seconds is in the URL.`);
       } catch (error) { compositorMessage('This browser could not update the URL.', true); }
     });
     async function addClipToTrack(id) {
@@ -1286,7 +1430,10 @@
         compositionItems.push(entry);
         compositionDuration = Math.max(compositionDuration, entry.end);
       }));
+      const hadComposition = document.body.classList.contains('has-composition');
       document.body.classList.toggle('has-composition', compositionItems.length > 0);
+      if (compositionItems.length) disposeMedia(output);
+      else if (hadComposition && !document.body.classList.contains('minimal')) render();
       const laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
       trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
       const ruler = document.createElement('div');
@@ -1316,32 +1463,49 @@
       playheadHandle.type = 'button';
       playheadHandle.textContent = '▼';
       playheadHandle.setAttribute('role', 'slider');
-      playheadHandle.setAttribute('aria-label', 'Track playhead in seconds');
       playheadHandle.setAttribute('aria-valuemin', '0');
       let draggingPlayhead = false;
+      let movedPlayhead = false;
+      let pointerStartX = 0;
+      let pointerStartY = 0;
       const seekFromPointer = event => setCompositionTime(
         (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       playheadHandle.addEventListener('pointerdown', event => {
         if (event.button !== 0) return;
         event.preventDefault();
         draggingPlayhead = true;
+        movedPlayhead = false;
+        pointerStartX = event.clientX;
+        pointerStartY = event.clientY;
         playheadHandle.setPointerCapture(event.pointerId);
-        seekFromPointer(event);
       });
       playheadHandle.addEventListener('pointermove', event => {
-        if (draggingPlayhead) seekFromPointer(event);
+        if (!draggingPlayhead) return;
+        if (Math.abs(event.clientX - pointerStartX) > 4 ||
+            Math.abs(event.clientY - pointerStartY) > 4) movedPlayhead = true;
+        if (movedPlayhead) seekFromPointer(event);
       });
-      const finishScrub = () => { draggingPlayhead = false; };
-      playheadHandle.addEventListener('pointerup', finishScrub);
-      playheadHandle.addEventListener('pointercancel', finishScrub);
+      playheadHandle.addEventListener('pointerup', event => {
+        if (!draggingPlayhead) return;
+        draggingPlayhead = false;
+        if (movedPlayhead) seekFromPointer(event);
+        else toggleFrameLock();
+      });
+      playheadHandle.addEventListener('pointercancel', () => { draggingPlayhead = false; });
       playheadHandle.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleFrameLock();
+          return;
+        }
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault();
-        setCompositionTime(compositionTime + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1));
+        setCompositionTime(session.playheadSeconds + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1));
       });
       playhead.append(playheadHandle);
       trackPlayhead = playhead;
       trackContent.append(playhead);
+      syncFrameLockButton();
       source.forEach((track, trackIndex) => {
         const row = document.createElement('div');
         row.className = 'track-row';
@@ -1361,6 +1525,9 @@
           const id = clip.id;
           const tile = document.createElement('div');
           tile.className = 'clip-tile';
+          const entry = compositionItems.find(value => value.track === trackIndex &&
+            value.start === clip.start && value.id === id && !value.tile);
+          if (entry) entry.tile = tile;
           tile.dataset.index = String(clipIndex);
           tile.style.left = `${Math.round(clip.start * timelineScale)}px`;
           tile.style.width = `${Math.min(2000, Math.max(88, Math.round(item.duration * timelineScale)))}px`;
@@ -1468,7 +1635,7 @@
       });
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
-      setCompositionTime(compositionTime);
+      setCompositionTime(session.playheadSeconds);
       if (focusGrip) { focusGrip.focus(); pendingClipFocus = null; }
       refreshClipList();
     }
@@ -1572,7 +1739,8 @@
       syncDisplay();
       disposeMedia(output);
       output.textContent = '';
-      if (!document.body.classList.contains('minimal')) {
+      if (!document.body.classList.contains('minimal') &&
+          !document.body.classList.contains('has-composition')) {
         const replyIsMedia = Boolean(mediaType(replyField.value)) ||
           replyField.value.trim().startsWith('timeline:');
         const primary = document.createElement('div');
@@ -1783,8 +1951,8 @@
       }
       activeTrack = Math.min(activeTrack, tracks.length - 1);
       const requestedPosition = Number(params.get('at'));
-      compositionTime = params.has('at') && Number.isFinite(requestedPosition) && requestedPosition >= 0 ?
-        requestedPosition : 0;
+      if (params.has('at') && Number.isFinite(requestedPosition) && requestedPosition >= 0)
+        session.playheadSeconds = requestedPosition;
       void refreshCompositor();
       refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
