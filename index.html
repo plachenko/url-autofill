@@ -108,7 +108,7 @@
   #compositor button { min-height: 42px; padding: 7px 12px; font-size: 15px; border-radius: 6px; }
   #composition-preview { display: grid; place-items: center; min-height: 180px;
     background: #10151e; border-radius: 8px; overflow: hidden; }
-  #composition-preview img, #composition-preview video { max-width: 100%; max-height: 55vh; }
+  #composition-preview img, #composition-preview video, #composition-preview canvas { max-width: 100%; max-height: 55vh; }
   #composition-preview [hidden] { display: none; }
   #composition-scrubber { width: 100%; margin: 12px 0 4px; }
   #track-list { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; }
@@ -176,7 +176,7 @@
     grid-template-rows: minmax(0, 1fr); background: #10151e; }
   body.has-composition #composition-preview { display: grid; }
   body.has-composition #output { display: none; }
-  #composition-preview img, #composition-preview video { width: 100%; height: 100%; max-width: none;
+  #composition-preview img, #composition-preview video, #composition-preview canvas { width: 100%; height: 100%; max-width: none;
     max-height: none; min-width: 0; min-height: 0; grid-area: 1 / 1; object-fit: contain; }
   #composition-empty { grid-area: 1 / 1; }
   #output .rendered-media, #output .timeline-player video, #output .timeline-player img {
@@ -332,6 +332,7 @@
       <li>Play saved items in order with <code>?l=clip1,clip2</code>. The player advances after each video or image. Use <code>?x=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
       <li>Share compositor tracks with <code>?tr=clip1@0,clip2@3|clip3@1&amp;at=2.50</code>. Each <code>@</code> value is a start second; trimmed clips add <code>~sourceStart~duration</code>. <code>at</code> is the scrubber position. The receiving browser needs the saved clips.</li>
       <li>Use the menu to save clips. The large preview shows the whole clip frame under the yellow playhead. The red line on its tile marks the current rendered frame. Tap the top of the yellow playhead to lock or unlock the red line; drag the yellow handle or click the ruler to scrub. The bottom strip can expand into tracks or collapse for render focus. Pin locks the preview's internal dimensions while fitting it inside the available area. Drag a clip to move it; the tile follows in real time. Drag its left or right yellow edge to trim it. Snap on aligns nearby seconds and clip edges within 0.2 seconds. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
+      <li>Select clips with their check buttons to move them together. Split cuts selected clips at the playhead; with no selection, it cuts the visible clip. Each side must be at least 0.1 seconds long.</li>
       <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -359,6 +360,7 @@
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
     <div id="composition-preview" aria-label="Composition preview">
       <img id="composition-image" alt="Current composition frame" hidden>
+      <canvas id="composition-image-frame" role="img" aria-label="Current animation frame" hidden></canvas>
       <video id="composition-video" playsinline muted hidden></video>
       <span id="composition-empty">Add clips to a track to preview them.</span>
     </div>
@@ -370,6 +372,7 @@
       <div class="compositor-actions"><button id="composition-play" type="button">Play</button></div>
       <div id="seek-wrap"><input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds"><span id="compact-render-frame" aria-hidden="true" hidden></span></div>
       <div id="composition-time">0.00 / 0.00 seconds</div>
+      <button id="split-clip" type="button" title="Split selected clips at the playhead, or the visible clip if none are selected">Split</button>
       <button id="snap-toggle" type="button" aria-pressed="true" title="Snap within 0.2 seconds to seconds and clip edges">Snap</button>
       <button id="pin-preview" type="button" aria-pressed="false">Pin</button>
       <button id="timeline-toggle" type="button" aria-controls="track-list" aria-expanded="false">Expand tracks</button>
@@ -1144,6 +1147,7 @@
     const trackLabelWidth = 96;
     let trackPlayhead = null;
     const compositionImage = document.getElementById('composition-image');
+    const compositionImageFrame = document.getElementById('composition-image-frame');
     const compositionVideo = document.getElementById('composition-video');
     const compositionEmpty = document.getElementById('composition-empty');
     const compositionScrubber = document.getElementById('composition-scrubber');
@@ -1343,13 +1347,86 @@
       compositionPlay.textContent = 'Play';
       saveSession(true);
     }
+    let imagePreview = null;
+    let imagePreviewFrame = 0;
+    let imageLoopStarted = 0;
+    function disposeImagePreview() {
+      window.cancelAnimationFrame(imagePreviewFrame);
+      imagePreviewFrame = 0;
+      if (imagePreview) {
+        imagePreview.cancelled = true;
+        imagePreview.decoder?.close();
+        imagePreview = null;
+      }
+      compositionImageFrame.hidden = true;
+    }
+    async function prepareImagePreview(entry) {
+      if (!('ImageDecoder' in window)) return;
+      const mime = entry.item.src.match(/^data:([^;,]+)/i)?.[1];
+      if (!mime) return;
+      const state = { entry, decoder: null, cancelled: false, ready: false,
+        frameIndex: -1, request: 0 };
+      imagePreview = state;
+      try {
+        if (!await window.ImageDecoder.isTypeSupported(mime) || state.cancelled) return;
+        const data = await (await fetch(entry.item.src)).arrayBuffer();
+        if (state.cancelled) return;
+        const decoder = new window.ImageDecoder({ data, type: mime });
+        state.decoder = decoder;
+        await decoder.tracks.ready;
+        await decoder.completed;
+        if (state.cancelled) return;
+        const count = decoder.tracks.selectedTrack?.frameCount || 0;
+        if (count < 2) {
+          decoder.close();
+          state.decoder = null;
+          return;
+        }
+        const starts = [0];
+        for (let index = 0; index < count; index++) {
+          const result = await decoder.decode({ frameIndex: index });
+          try {
+            if (state.cancelled) return;
+            starts.push(starts[index] + (result.image.duration > 0 ?
+              result.image.duration / 1000 : 100));
+          } finally { result.image.close(); }
+        }
+        if (state.cancelled || starts[count] <= 0) return;
+        state.starts = starts;
+        state.ready = true;
+        state.frameIndex = -1;
+        imageLoopStarted = performance.now();
+        compositionImage.hidden = true;
+        compositionImageFrame.hidden = false;
+        syncCompositionPreview(true);
+      } catch (error) {
+        if (!state.cancelled) {
+          state.decoder?.close();
+          state.decoder = null;
+        }
+      }
+    }
+    function showImagePreviewFrame(state, index) {
+      if (state.frameIndex === index) return;
+      state.frameIndex = index;
+      const request = ++state.request;
+      void state.decoder.decode({ frameIndex: index }).then(result => {
+        try {
+          if (state.cancelled || request !== state.request) return;
+          const frame = result.image;
+          compositionImageFrame.width = frame.displayWidth;
+          compositionImageFrame.height = frame.displayHeight;
+          compositionImageFrame.getContext('2d')?.drawImage(frame, 0, 0);
+        } finally { result.image.close(); }
+      }).catch(() => { /* Keep the last decoded frame. */ });
+    }
     function syncFrameLockButton() {
       if (!trackPlayhead) return;
       trackPlayhead.classList.toggle('locked', session.lockRenderFrame);
       const handle = trackPlayhead.firstElementChild;
       handle.textContent = session.lockRenderFrame ? '◆' : '▼';
-      handle.setAttribute('aria-label', `Track playhead in seconds; frame ${session.lockRenderFrame ? 'locked' : 'unlocked'}. Press Enter to toggle lock`);
-      handle.title = session.lockRenderFrame ? 'Unlock red render-frame line' : 'Lock red render-frame line to playhead';
+      handle.setAttribute('aria-label', `Track playhead in seconds; preview frame ${session.lockRenderFrame ? 'locked to playhead' : 'looping'}. Press Enter to toggle lock`);
+      handle.title = session.lockRenderFrame ? 'Let preview frame and red line loop' : 'Lock preview frame and red line to playhead';
     }
     function toggleFrameLock() {
       session.lockRenderFrame = !session.lockRenderFrame;
@@ -1365,6 +1442,7 @@
       if (active !== visibleItem) {
         visibleItem?.tile?.classList.remove('under-playhead');
         visibleItem?.tile?.removeAttribute('aria-current');
+        disposeImagePreview();
         compositionVideo.pause();
         compositionVideo.removeAttribute('src');
         compositionImage.removeAttribute('src');
@@ -1374,7 +1452,11 @@
         compositionImage.hidden = !active || active.item.type !== 'image';
         compositionVideo.hidden = !active || active.item.type !== 'video';
         compositionEmpty.hidden = Boolean(active);
-        if (active?.item.type === 'image') compositionImage.src = active.item.src;
+        if (active?.item.type === 'image') {
+          imageLoopStarted = performance.now();
+          compositionImage.src = active.item.src;
+          void prepareImagePreview(active);
+        }
         if (active?.item.type === 'video') {
           compositionVideo.src = active.item.src;
           compositionVideo.onloadedmetadata = () => {
@@ -1384,23 +1466,49 @@
             session.renderFrameSeconds = session.lockRenderFrame ?
               session.playheadSeconds : active.start + compositionVideo.currentTime - active.sourceStart;
             syncCompositionPreview();
-            if (compositionPlaying) void compositionVideo.play().catch(() => stopComposition());
+            if (compositionPlaying && !session.lockRenderFrame)
+              void compositionVideo.play().catch(() => stopComposition());
           };
           seek = true;
         }
       }
       if (active?.item.type === 'video' && compositionVideo.readyState >= 1) {
         const offset = active.sourceStart + session.playheadSeconds - active.start;
-        if (seek || (session.lockRenderFrame && Math.abs(compositionVideo.currentTime - offset) > .35)) {
+        if (seek || (session.lockRenderFrame && Math.abs(compositionVideo.currentTime - offset) > .015)) {
           compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, offset));
         }
-        if (compositionPlaying && compositionVideo.paused) void compositionVideo.play().catch(() => stopComposition());
-        if (!compositionPlaying && !compositionVideo.paused) compositionVideo.pause();
+        if (compositionPlaying && !session.lockRenderFrame && compositionVideo.paused)
+          void compositionVideo.play().catch(() => stopComposition());
+        if ((!compositionPlaying || session.lockRenderFrame) && !compositionVideo.paused)
+          compositionVideo.pause();
         session.renderFrameSeconds = session.lockRenderFrame ?
           session.playheadSeconds : active.start + compositionVideo.currentTime - active.sourceStart;
       }
-      if (active?.item.type === 'image')
-        session.renderFrameSeconds = session.lockRenderFrame ? session.playheadSeconds : active.start;
+      if (active?.item.type === 'image') {
+        const state = imagePreview?.entry === active && imagePreview.ready ? imagePreview : null;
+        const cycleMs = state ? state.starts[state.starts.length - 1] : active.duration * 1000;
+        const phase = session.lockRenderFrame ?
+          Math.max(0, Math.min(1, (session.playheadSeconds - active.start) / active.duration)) :
+          ((performance.now() - imageLoopStarted) % cycleMs) / cycleMs;
+        session.renderFrameSeconds = session.lockRenderFrame ? session.playheadSeconds :
+          active.start + phase * active.duration;
+        if (state) {
+          const offsetMs = Math.min(cycleMs - .001, phase * cycleMs);
+          let low = 0;
+          let high = state.starts.length - 2;
+          while (low < high) {
+            const middle = Math.floor((low + high + 1) / 2);
+            if (state.starts[middle] <= offsetMs) low = middle;
+            else high = middle - 1;
+          }
+          showImagePreviewFrame(state, low);
+        }
+        if (!session.lockRenderFrame && !compositionPlaying && !imagePreviewFrame)
+          imagePreviewFrame = window.requestAnimationFrame(() => {
+            imagePreviewFrame = 0;
+            syncCompositionPreview();
+          });
+      }
       if (active?.tile) {
         active.tile.append(renderFrameMarker);
         const frameOffset = Math.max(0, Math.min(active.duration,
@@ -1454,6 +1562,41 @@
       compositionFrame = window.requestAnimationFrame(compositionTick);
     });
     compositionScrubber.addEventListener('input', () => setCompositionTime(Number(compositionScrubber.value)));
+    document.getElementById('split-clip').addEventListener('click', () => {
+      const at = roundTime(session.playheadSeconds);
+      const candidates = selectedClips.size ?
+        compositionItems.filter(entry => selectedClips.has(entry.clipRef)) :
+        (visibleItem ? [visibleItem] : []);
+      const splittable = candidates.filter(entry =>
+        at - entry.start >= .1 - 1e-9 && entry.end - at >= .1 - 1e-9);
+      if (!splittable.length) {
+        compositorMessage(selectedClips.size ?
+          'Move the playhead inside a selected clip, at least 0.1 seconds from each edge.' :
+          'Move the playhead inside a clip, at least 0.1 seconds from each edge.', true);
+        return;
+      }
+      if (tracks.flat().length + splittable.length > 100) {
+        compositorMessage('The compositor supports up to 100 clips.', true);
+        return;
+      }
+      stopComposition();
+      for (const entry of splittable) {
+        const original = entry.clipRef;
+        const leftDuration = roundTime(at - entry.start);
+        const right = { ...original, start: at,
+          sourceStart: entry.item.type === 'video' ?
+            roundTime(entry.sourceStart + leftDuration) : 0,
+          duration: roundTime(entry.end - at) };
+        original.sourceStart = entry.sourceStart;
+        original.duration = leftDuration;
+        tracks[entry.track].push(right);
+        if (selectedClips.has(original)) selectedClips.add(right);
+      }
+      tracks.forEach(track => track.sort((a, b) => a.start - b.start));
+      saveTracks();
+      compositorMessage(`Split ${splittable.length} clip${splittable.length === 1 ? '' : 's'} at ${at.toFixed(2)} seconds.`);
+      void refreshCompositor();
+    });
     document.getElementById('add-track').addEventListener('click', () => {
       if (tracks.length >= 8) { compositorMessage('The compositor supports up to 8 tracks.', true); return; }
       tracks.push([]);
@@ -1490,6 +1633,7 @@
     async function refreshCompositor() {
       const revision = ++compositionRevision;
       stopComposition();
+      disposeImagePreview();
       const existingClips = new Set(tracks.flat());
       for (const clip of selectedClips) if (!existingClips.has(clip)) selectedClips.delete(clip);
       const source = tracks.map(track => track.map(clip => ({ ...clip })));
