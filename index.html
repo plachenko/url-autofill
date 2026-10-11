@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.4.2</title>
+<title>URL Autofill · v0.5.0</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -46,6 +46,10 @@
   #page-fullscreen { position: fixed; right: max(16px, env(safe-area-inset-right));
     bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10001;
     width: 52px; min-height: 52px; padding: 8px; font-size: 26px;
+    color: #b8c8d8; background: #182130e6; border: 1px solid #7085a1; }
+  #minimal-toggle { position: fixed; left: max(16px, env(safe-area-inset-left));
+    bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10001;
+    min-height: 52px; padding: 8px 14px; font-size: 16px;
     color: #b8c8d8; background: #182130e6; border: 1px solid #7085a1; }
   #minimal-display { display: none; }
   body.minimal main > :not(#minimal-display) { display: none !important; }
@@ -102,15 +106,16 @@
   @media (max-width: 600px) { body { padding: 16px; } .buttons { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
-<body class="minimal">
+<body>
 <div id="usage-bar" aria-label="Cursor usage"><span id="usage-text">usage unavailable</span><div id="usage-fill"></div></div>
 <button id="page-fullscreen" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" aria-pressed="false" hidden>⛶</button>
+<button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
 <main>
   <div id="minimal-display" aria-live="polite">
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.4.2</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.5.0</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -149,9 +154,9 @@
   <p id="status" role="status" aria-live="polite">Ready.</p>
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
   <details>
-    <summary>Help / About · v0.4.2</summary>
+    <summary>Help / About · v0.5.0</summary>
     <ul>
-      <li><code>?minimal=0</code>: shows the full interface for debugging; absent or <code>minimal=1</code> shows only the two texts.</li>
+      <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. <code>?minimal=0</code> or <code>?minimal=1</code> overrides the saved choice for that URL.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
       <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
         <code>?usage=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
@@ -164,7 +169,7 @@
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
       <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
-      <li>In the full interface (<code>?minimal=0</code>), save an image or video under the text field, select stored clips, and play them as a timeline.</li>
+      <li>In the full interface, save an image or video under the text field, select stored clips, and play them as a timeline.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -741,14 +746,27 @@
       displayedReply = replyField.value;
       displayedMinimal = minimal;
     }
-    document.addEventListener('keydown', event => {
-      if (event.key !== 'u' || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
-          event.target.closest('input, textarea, select, [contenteditable]')) return;
-      if (document.body.classList.toggle('minimal')) {
+    const minimalToggle = document.getElementById('minimal-toggle');
+    const minimalStorageKey = 'urlAutofill.minimal.v1';
+    function setMinimal(minimal, persist = true) {
+      document.body.classList.toggle('minimal', minimal);
+      minimalToggle.textContent = minimal ? 'Full view' : 'Minimal view';
+      minimalToggle.setAttribute('aria-pressed', String(minimal));
+      if (minimal) {
         disposeMedia(output);
         output.textContent = '';
       }
+      if (persist) {
+        try { window.localStorage.setItem(minimalStorageKey, minimal ? '1' : '0'); }
+        catch (error) { /* The view still changes when storage is unavailable. */ }
+      }
       syncDisplay();
+    }
+    minimalToggle.addEventListener('click', () => setMinimal(!document.body.classList.contains('minimal')));
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'u' || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+          event.target.closest('input, textarea, select, [contenteditable]')) return;
+      setMinimal(!document.body.classList.contains('minimal'));
     });
     const output = document.getElementById('output');
     const status = document.getElementById('status');
@@ -1072,7 +1090,7 @@
       saveMemory();
     });
     document.addEventListener('click', event => {
-      if (event.target.closest('#page-fullscreen, .image-controls, .timeline-player, video, audio')) return;
+      if (event.target.closest('#page-fullscreen, #minimal-toggle, .image-controls, .timeline-player, video, audio')) return;
       if (document.body.classList.contains('minimal')) run('speak');
     });
     function startup() {
@@ -1080,7 +1098,6 @@
       stopSpeech();
       loadMemory();
       const params = new URLSearchParams(window.location.search);
-      document.body.classList.toggle('minimal', params.get('minimal') !== '0');
       let mediaMessage = '';
       let mediaError = false;
       try {
@@ -1110,7 +1127,10 @@
       }
       if (changed) saveMemory();
       else showMemory();
-      syncDisplay();
+      let savedMinimal = false;
+      try { savedMinimal = window.localStorage.getItem(minimalStorageKey) === '1'; }
+      catch (error) { /* Use the full interface when storage is unavailable. */ }
+      setMinimal(params.has('minimal') ? params.get('minimal') === '1' : savedMinimal, false);
       refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
       if (params.has('action') || params.get('speak') === '1') {
