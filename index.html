@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.6.3</title>
+<title>URL Autofill · v0.7.0</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -154,7 +154,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.6.3</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.7.0</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -209,36 +209,36 @@
     <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
   </section>
   <details>
-    <summary>Help / About · v0.6.3</summary>
+    <summary>Help / About · v0.7.0</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
       <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
-        <code>?usage=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
+        <code>?u=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
       <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
         use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
         Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
-      <li><code>text</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>text=</code>; Full view removes it from the address bar after reading it.</li>
-      <li><code>r</code>: fills the Assistant reply field. URL-encode special characters. Older <code>reply=</code> links are accepted and shortened to <code>r=</code>.</li>
+      <li><code>t</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>t=</code>; Full view removes it from the address bar after reading it.</li>
+      <li><code>r</code>: fills the Assistant reply field. URL-encode special characters. Older long parameter names still work and are shortened in the address bar.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
-      <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
-      <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
-      <li>Share compositor tracks with <code>?tracks=clip1@0,clip2@3|clip3@1&amp;pos=2.50</code>. Each <code>@</code> value is a start second; <code>pos</code> is the scrubber position. The receiving browser needs the saved clips.</li>
+      <li>Store a base64 image or video in pieces with <code>?s=clip1&amp;p=1&amp;n=2&amp;f=image/png&amp;d=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>h=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
+      <li>Play saved items in order with <code>?l=clip1,clip2</code>. The player advances after each video or image. Use <code>?x=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
+      <li>Share compositor tracks with <code>?tr=clip1@0,clip2@3|clip3@1&amp;at=2.50</code>. Each <code>@</code> value is a start second; <code>at</code> is the scrubber position. The receiving browser needs the saved clips.</li>
       <li>In the full interface, add saved clips to compositor tracks below the rendered output. Drag tiles to set their start second or move them between tracks. The bottom track appears over earlier tracks. Drag the yellow playhead or click the time ruler to scrub. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
-      <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
-      <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
-      <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
-      <li><code>memory</code>: saves memory across page loads; an empty value clears memory.</li>
-      <li><code>clip</code>: saves the Clip ID across page loads.</li>
-      <li><code>delay</code>: seconds before the action, including decimals; maximum 3600.
+      <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
+      <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
+      <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
+      <li><code>m</code>: saves memory across page loads; an empty value clears memory.</li>
+      <li><code>c</code>: saves the Clip ID across page loads.</li>
+      <li><code>w</code>: seconds before the action, including decimals; maximum 3600.
         Invalid or negative values become 0. Cancel stops a pending action.</li>
     </ul>
-    <p><a href="?text=hello&amp;action=render&amp;delay=5"><code>index.html?text=hello&amp;action=render&amp;delay=5</code></a></p>
-    <p><a href="?text=hello&amp;r=Hi%20there%21&amp;action=render"><code>index.html?text=hello&amp;r=Hi%20there%21&amp;action=render</code></a></p>
-    <p><a href="?text=hello%20there&amp;action=upper&amp;delay=0.5"><code>index.html?text=hello%20there&amp;action=upper&amp;delay=0.5</code></a></p>
-    <p><a href="?memory=Remember%20this&amp;clip=clip-123&amp;action=render"><code>index.html?memory=Remember%20this&amp;clip=clip-123&amp;action=render</code></a></p>
-    <p><a href="?memory="><code>index.html?memory=</code></a> clears saved memory.</p>
+    <p><a href="?t=hello&amp;a=render&amp;w=5"><code>index.html?t=hello&amp;a=render&amp;w=5</code></a></p>
+    <p><a href="?t=hello&amp;r=Hi%20there%21&amp;a=render"><code>index.html?t=hello&amp;r=Hi%20there%21&amp;a=render</code></a></p>
+    <p><a href="?t=hello%20there&amp;a=upper&amp;w=0.5"><code>index.html?t=hello%20there&amp;a=upper&amp;w=0.5</code></a></p>
+    <p><a href="?m=Remember%20this&amp;c=clip-123&amp;a=render"><code>index.html?m=Remember%20this&amp;c=clip-123&amp;a=render</code></a></p>
+    <p><a href="?m="><code>index.html?m=</code></a> clears saved memory.</p>
     <p>Manual Run buttons cancel any pending action. Speech availability depends on the browser;
       some browsers require tapping the page (or Run Speak in the full interface) before audio can play.
       When audio is unavailable, highlighting continues silently.</p>
@@ -247,6 +247,29 @@
 <script>
   'use strict';
   function initialize() {
+    const shortParameters = {
+      text: 't', reply: 'r', usage: 'u', store: 's', part: 'p', total: 'n',
+      mime: 'f', data: 'd', seconds: 'h', timeline: 'l', delete: 'x',
+      tracks: 'tr', pos: 'at', action: 'a', speak: 'sp', memory: 'm',
+      clip: 'c', delay: 'w'
+    };
+    function compactParams() {
+      const url = new URL(window.location.href);
+      let changed = false;
+      for (const [longName, shortName] of Object.entries(shortParameters)) {
+        if (!url.searchParams.has(longName)) continue;
+        if (!url.searchParams.has(shortName)) {
+          url.searchParams.set(shortName, url.searchParams.get(longName));
+        }
+        url.searchParams.delete(longName);
+        changed = true;
+      }
+      if (changed) {
+        try { window.history.replaceState(null, '', url); }
+        catch (error) { /* Keep using the short names even when history is unavailable. */ }
+      }
+      return url.searchParams;
+    }
     const fullscreenButton = document.getElementById('page-fullscreen');
     const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
     const requestFullscreen = element => element.requestFullscreen || element.webkitRequestFullscreen;
@@ -285,7 +308,7 @@
     const usageBar = document.getElementById('usage-bar');
     const usageText = document.getElementById('usage-text');
     const usageFill = document.getElementById('usage-fill');
-    const usageEnabled = new URLSearchParams(window.location.search).get('usage') !== '0';
+    const usageEnabled = compactParams().get('u') !== '0';
     usageBar.hidden = !usageEnabled;
     let usageRequest = 0;
     async function refreshUsage() {
@@ -352,13 +375,13 @@
     const validMediaId = id => /^[a-zA-Z0-9_-]{1,64}$/.test(id);
     const validMime = mime => /^(image|video)\/[a-z0-9.+-]+$/i.test(mime);
     function storeMediaPart(params) {
-      const id = params.get('store');
+      const id = params.get('s');
       if (!validMediaId(id)) throw new Error('Store ID must use 1–64 letters, numbers, _ or -.');
-      const part = Number(params.get('part'));
-      const total = Number(params.get('total'));
+      const part = Number(params.get('p'));
+      const total = Number(params.get('n'));
       if (!Number.isInteger(part) || !Number.isInteger(total) || part < 1 || total < 1 ||
           part > total || total > 1000) throw new Error('Use a part number from 1 to total (maximum 1000).');
-      let data = params.get('data');
+      let data = params.get('d');
       if (!data) throw new Error('Missing base64 data chunk.');
       data = data.replaceAll(' ', '+'); // URLSearchParams decodes an unescaped + as a space.
       const prefix = data.match(/^data:((?:image|video)\/[a-z0-9.+-]+);base64,/i);
@@ -367,12 +390,12 @@
       if (!/^[a-zA-Z0-9+/]*={0,2}$/.test(data)) throw new Error('Chunk must contain base64 data.');
       const base = mediaStorageKey(id);
       const previous = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
-      const mime = (params.get('mime') || prefix?.[1] || previous?.mime || '').toLowerCase();
+      const mime = (params.get('f') || prefix?.[1] || previous?.mime || '').toLowerCase();
       if (!validMime(mime)) throw new Error('Supply an image or video MIME type, such as image/png.');
       if (previous && (previous.mime !== mime || previous.total !== total)) {
         throw new Error('Stored type or part count differs. Delete this ID before replacing it.');
       }
-      const seconds = params.has('seconds') ? Number(params.get('seconds')) : previous?.seconds ?? 3;
+      const seconds = params.has('h') ? Number(params.get('h')) : previous?.seconds ?? 3;
       if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 3600) {
         throw new Error('Image seconds must be between 0.1 and 3600.');
       }
@@ -811,19 +834,14 @@
         url.searchParams.delete('minimal');
         changed = true;
       }
-      if (url.searchParams.has('reply')) {
-        if (!url.searchParams.has('r')) url.searchParams.set('r', url.searchParams.get('reply'));
-        url.searchParams.delete('reply');
-        changed = true;
-      }
       if (minimal && field.value) {
-        if (url.searchParams.get('text') !== field.value) {
-          url.searchParams.set('text', field.value);
+        if (url.searchParams.get('t') !== field.value) {
+          url.searchParams.set('t', field.value);
           changed = true;
         }
       } else {
-        if (url.searchParams.has('text')) {
-          url.searchParams.delete('text');
+        if (url.searchParams.has('t')) {
+          url.searchParams.delete('t');
           changed = true;
         }
       }
@@ -1080,9 +1098,9 @@
       if (!compositionItems.length) { compositorMessage('Add a complete clip before sharing a position.', true); return; }
       const url = new URL(window.location.href);
       url.search = '';
-      url.searchParams.set('tracks', tracks.map(track =>
+      url.searchParams.set('tr', tracks.map(track =>
         track.map(clip => `${clip.id}@${clip.start.toFixed(2)}`).join(',')).join('|'));
-      url.searchParams.set('pos', compositionTime.toFixed(2));
+      url.searchParams.set('at', compositionTime.toFixed(2));
       try {
         window.history.replaceState(null, '', url);
         compositorMessage(`Position ${compositionTime.toFixed(2)} seconds is in the URL.`);
@@ -1557,29 +1575,29 @@
       stopWaiting();
       stopSpeech();
       loadMemory();
-      const params = new URLSearchParams(window.location.search);
+      const params = compactParams();
       let mediaMessage = '';
       let mediaError = false;
       try {
-        if (params.has('delete')) mediaMessage = deleteMedia(params.get('delete'));
-        if (params.has('store')) mediaMessage = storeMediaPart(params);
+        if (params.has('x')) mediaMessage = deleteMedia(params.get('x'));
+        if (params.has('s')) mediaMessage = storeMediaPart(params);
       } catch (error) {
         mediaMessage = error.name === 'QuotaExceededError' ? 'Browser storage is full.' : error.message;
         mediaError = true;
       }
       let changed = false;
-      for (const key of ['memory', 'clip']) {
-        if (params.has(key)) { memoryState[key] = params.get(key); changed = true; }
+      for (const [parameter, key] of [['m', 'memory'], ['c', 'clip']]) {
+        if (params.has(parameter)) { memoryState[key] = params.get(parameter); changed = true; }
       }
-      if (params.has('timeline') || params.has('text')) {
-        field.value = params.has('timeline') ? `timeline:${params.get('timeline')}` : params.get('text');
+      if (params.has('l') || params.has('t')) {
+        field.value = params.has('l') ? `timeline:${params.get('l')}` : params.get('t');
         memoryState.text = field.value;
         changed = true;
       } else {
         field.value = memoryState.text;
       }
-      if (params.has('r') || params.has('reply')) {
-        replyField.value = params.has('r') ? params.get('r') : params.get('reply');
+      if (params.has('r')) {
+        replyField.value = params.get('r');
         memoryState.reply = replyField.value;
         changed = true;
       } else {
@@ -1596,8 +1614,8 @@
         const savedTracks = JSON.parse(window.localStorage.getItem(compositorKey));
         tracks = validTracks(savedTracks) ? savedTracks : [[]];
       } catch (error) { tracks = [[]]; }
-      if (params.has('tracks')) {
-        const fromUrl = params.get('tracks').split('|').map(track => track ? track.split(',').map(value => {
+      if (params.has('tr')) {
+        const fromUrl = params.get('tr').split('|').map(track => track ? track.split(',').map(value => {
           const match = value.match(/^([a-zA-Z0-9_-]{1,64})@(\d+(?:\.\d+)?)$/);
           return match ? { id: match[1], start: Number(match[2]) } : null;
         }) : []);
@@ -1607,24 +1625,24 @@
           message('The URL contains an invalid track layout.', true);
         }
       }
-      if (params.has('delete') && validMediaId(params.get('delete'))) {
-        tracks = tracks.map(track => track.filter(item => item.id !== params.get('delete')));
+      if (params.has('x') && validMediaId(params.get('x'))) {
+        tracks = tracks.map(track => track.filter(item => item.id !== params.get('x')));
         saveTracks();
       }
       activeTrack = Math.min(activeTrack, tracks.length - 1);
-      const requestedPosition = Number(params.get('pos'));
-      compositionTime = params.has('pos') && Number.isFinite(requestedPosition) && requestedPosition >= 0 ?
+      const requestedPosition = Number(params.get('at'));
+      compositionTime = params.has('at') && Number.isFinite(requestedPosition) && requestedPosition >= 0 ?
         requestedPosition : 0;
       void refreshCompositor();
       refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
-      if (params.has('action') || params.get('speak') === '1') {
-        const name = params.has('action') ? params.get('action').trim().toLowerCase() : 'speak';
+      if (params.has('a') || params.get('sp') === '1') {
+        const name = params.has('a') ? params.get('a').trim().toLowerCase() : 'speak';
         const execute = () => {
           run(name);
-          if (params.get('speak') === '1' && name !== 'speak') run('speak');
+          if (params.get('sp') === '1' && name !== 'speak') run('speak');
         };
-        const number = Number(params.get('delay'));
+        const number = Number(params.get('w'));
         const seconds = Number.isFinite(number) && number >= 0 ? Math.min(number, 3600) : 0;
         const milliseconds = seconds * 1000;
         if (!Object.prototype.hasOwnProperty.call(actions, name) || milliseconds === 0) {
