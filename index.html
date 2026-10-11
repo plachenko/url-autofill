@@ -141,18 +141,97 @@
   #compositor-status { color: #b8c8e0; overflow-wrap: anywhere; }
   #compositor-status.error { color: #ffb4b4; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
+  body { padding: 0; height: 100dvh; overflow: hidden; }
+  #stage { width: 100%; max-width: none; height: calc(100dvh - var(--timeline-height, 244px));
+    min-height: 0; position: relative; overflow: hidden; background: #10151e; }
+  #output, #composition-preview, #minimal-display { position: absolute; inset: 0; width: 100%; height: 100%;
+    min-height: 0; padding: 0; border: 0; border-radius: 0; overflow: auto; }
+  #output { display: flex; align-items: center; justify-content: center; flex-direction: column;
+    background: #10151e; text-align: center; }
+  #output > div:first-child { display: flex; align-items: center; justify-content: center;
+    flex: 1 1 auto; min-height: 0; width: 100%; overflow: auto; }
+  #output .rendered-reply { flex: 0 1 auto; max-height: 30%; width: 100%; margin: 0;
+    padding: 8px 16px; overflow: auto; }
+  #output:empty::before { content: 'Render preview'; font-size: 18px; color: #9cabc0; }
+  #composition-preview { display: none; place-items: center; background: #10151e; }
+  body.has-composition #composition-preview { display: grid; }
+  body.has-composition #output { display: none; }
+  #composition-preview img, #composition-preview video { width: 100%; height: 100%; max-width: none;
+    max-height: none; object-fit: contain; }
+  #output .rendered-media, #output .timeline-player video, #output .timeline-player img {
+    width: 100%; max-width: none; max-height: none; object-fit: contain; }
+  #output .static-image, #output .animated-image, #output .timeline-player {
+    width: 100%; height: 100%; max-width: none; min-height: 0; justify-content: center; }
+  #output .static-image img, #output .animated-image canvas, #output .timeline-player video,
+  #output .timeline-player img { flex: 1 1 auto; min-height: 0; height: 100%; object-fit: contain; }
+  #minimal-display { display: none; padding: 64px 24px 24px; text-align: center; }
+  body.minimal #minimal-display { display: flex; flex-direction: column; align-items: center;
+    justify-content: center; }
+  body.minimal #stage { height: 100dvh; }
+  body.minimal #compositor { display: none; }
+  #compositor { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; width: 100%;
+    height: var(--timeline-height, 244px); margin: 0; padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; overflow: hidden; border-radius: 0; border-width: 1px 0 0; }
+  #compositor h2 { font-size: 16px; margin: 0; }
+  #composition-scrubber { flex: 0 0 auto; margin: 5px 0 0; }
+  #composition-time { font-size: 13px; }
+  .compositor-actions { position: absolute; top: 8px; right: 12px; margin: 0; gap: 6px; }
+  #compositor button { min-height: 32px; padding: 3px 8px; font-size: 13px; }
+  #track-list { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-color: #7085a1 #10151e; }
+  #track-content { padding-bottom: 4px; }
+  .track-lane { min-height: 90px; }
+  .clip-tile { min-height: 88px; }
+  #compositor-status { margin: 2px 0 0; max-height: 22px; overflow: hidden; font-size: 12px; }
+  #menu-toggle, #page-fullscreen { position: fixed; top: max(24px, env(safe-area-inset-top));
+    bottom: auto; z-index: 1001; width: 48px; min-height: 48px; padding: 4px;
+    border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
+    font-size: 24px; }
+  #menu-toggle { left: max(12px, env(safe-area-inset-left)); }
+  #page-fullscreen { right: max(12px, env(safe-area-inset-right)); }
+  #fullscreen-restore { position: fixed; top: max(78px, calc(env(safe-area-inset-top) + 54px));
+    right: max(12px, env(safe-area-inset-right)); z-index: 1001; min-height: 40px;
+    padding: 6px 10px; font-size: 14px; background: #284e82e8; }
+  #drawer-backdrop { position: fixed; inset: 0; z-index: 1002; background: #0009; }
+  #drawer { position: fixed; inset: 0 auto 0 0; z-index: 1003; width: min(440px, 100vw);
+    padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    overflow-y: auto; overscroll-behavior: contain; background: #182130; box-shadow: 12px 0 32px #0009;
+    font-size: 16px; }
+  .drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 14px; font-size: 20px; }
+  #drawer button { min-height: 40px; padding: 6px 10px; font-size: 15px; }
+  #menu-close { width: 42px; }
+  .drawer-view-actions { display: flex; gap: 8px; margin-bottom: 20px; }
+  .drawer-view-actions button { flex: 1; }
+  #drawer h1 { font-size: 20px; margin: 0 0 12px; }
+  #drawer .memory-bar { margin-bottom: 16px; }
+  #drawer textarea { min-height: 110px; padding: 10px; font-size: 18px; }
+  #drawer .buttons { gap: 6px; margin: 14px 0; }
+  #drawer .buttons button { min-width: 0; }
+  #drawer #clip-library { margin: 16px 0; padding: 12px; }
+  .drawer-timeline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+  .drawer-timeline-actions button { flex: 1 1 150px; }
+  #drawer details { margin-top: 12px; }
   [hidden] { display: none !important; }
-  @media (max-width: 600px) { body { padding: 16px; } .buttons { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { :root { --timeline-height: 230px; }
+    .buttons { grid-template-columns: repeat(2, 1fr); }
+    #compositor { padding-inline: 8px; }
+    #compositor h2 { font-size: 14px; }
+    #compositor .compositor-actions button { font-size: 12px; padding-inline: 5px; }
+    #compositor-status { display: none; }
+  }
 </style>
 </head>
 <body>
 <div id="usage-bar" aria-label="Cursor usage"><span id="usage-text">usage unavailable</span><div id="usage-fill"></div></div>
+<button id="menu-toggle" type="button" aria-label="Open menu" aria-controls="drawer" aria-expanded="false">☰</button>
 <button id="page-fullscreen" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" aria-pressed="false" hidden>⛶</button>
-<button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
-<main>
-  <div id="minimal-display" aria-live="polite">
-    <div id="display-text" class="plain-text"></div>
-    <div id="display-reply" class="plain-text"></div>
+<button id="fullscreen-restore" type="button" hidden>Restore fullscreen</button>
+<div id="drawer-backdrop" hidden></div>
+<aside id="drawer" aria-label="Controls and help" hidden>
+  <div class="drawer-heading"><strong>URL Autofill</strong><button id="menu-close" type="button" aria-label="Close menu">✕</button></div>
+  <div class="drawer-view-actions">
+    <button id="drawer-fullscreen" type="button" hidden>Enter fullscreen</button>
+    <button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
   </div>
   <header><h1>URL Autofill</h1><span class="version">v0.7.0</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
@@ -177,6 +256,10 @@
     <p>Clips stay in this browser. Large videos may exceed browser storage.</p>
     <div id="clip-list" aria-label="Stored clips"></div>
   </section>
+  <div class="drawer-timeline-actions" aria-label="Timeline actions">
+    <button id="add-track" type="button">Add track</button>
+    <button id="position-url" type="button">Put position in URL</button>
+  </div>
   <label for="reply">Assistant reply</label>
   <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
   <div class="buttons" aria-label="Manual actions">
@@ -190,29 +273,11 @@
     <button id="cancel" type="button">Cancel</button>
   </div>
   <p id="status" role="status" aria-live="polite">Ready.</p>
-  <div id="output" aria-label="Rendered text" aria-live="polite"></div>
-  <section id="compositor" aria-labelledby="compositor-title">
-    <h2 id="compositor-title">Video compositor</h2>
-    <div id="composition-preview" aria-label="Composition preview">
-      <img id="composition-image" alt="Current composition frame" hidden>
-      <video id="composition-video" playsinline muted hidden></video>
-      <span id="composition-empty">Add clips to a track to preview them.</span>
-    </div>
-    <input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds">
-    <div id="composition-time">0.00 / 0.00 seconds</div>
-    <div class="compositor-actions">
-      <button id="composition-play" type="button">Play</button>
-      <button id="add-track" type="button">Add track</button>
-      <button id="position-url" type="button">Put position in URL</button>
-    </div>
-    <div id="track-list" aria-label="Composition tracks"><div id="track-content"></div></div>
-    <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
-  </section>
   <details>
     <summary>Help / About · v0.7.0</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
-      <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
+      <li>The top right button enters or exits page fullscreen. The choice is saved in this browser. If a browser blocks automatic restoration, use Restore fullscreen. Esc also exits fullscreen.</li>
       <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
         <code>?u=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
       <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
@@ -225,7 +290,7 @@
       <li>Store a base64 image or video in pieces with <code>?s=clip1&amp;p=1&amp;n=2&amp;f=image/png&amp;d=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>h=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?l=clip1,clip2</code>. The player advances after each video or image. Use <code>?x=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
       <li>Share compositor tracks with <code>?tr=clip1@0,clip2@3|clip3@1&amp;at=2.50</code>. Each <code>@</code> value is a start second; <code>at</code> is the scrubber position. The receiving browser needs the saved clips.</li>
-      <li>In the full interface, add saved clips to compositor tracks below the rendered output. Drag tiles to set their start second or move them between tracks. The bottom track appears over earlier tracks. Drag the yellow playhead or click the time ruler to scrub. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
+      <li>Use the menu to save clips. The large preview shows the current compositor frame when tracks contain clips. Drag tiles in the bottom timeline to set their start second or move them between tracks. The bottom track appears over earlier tracks. Drag the yellow playhead or click the time ruler to scrub. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
       <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -243,7 +308,29 @@
       some browsers require tapping the page (or Run Speak in the full interface) before audio can play.
       When audio is unavailable, highlighting continues silently.</p>
   </details>
+</aside>
+<main id="stage">
+  <div id="minimal-display" aria-live="polite">
+    <div id="display-text" class="plain-text"></div>
+    <div id="display-reply" class="plain-text"></div>
+  </div>
+  <div id="output" aria-label="Rendered text" aria-live="polite"></div>
+    <div id="composition-preview" aria-label="Composition preview">
+      <img id="composition-image" alt="Current composition frame" hidden>
+      <video id="composition-video" playsinline muted hidden></video>
+      <span id="composition-empty">Add clips to a track to preview them.</span>
+    </div>
 </main>
+<section id="compositor" aria-labelledby="compositor-title">
+    <h2 id="compositor-title">Video compositor</h2>
+    <input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds">
+    <div id="composition-time">0.00 / 0.00 seconds</div>
+    <div class="compositor-actions">
+      <button id="composition-play" type="button">Play</button>
+    </div>
+    <div id="track-list" aria-label="Composition tracks"><div id="track-content"></div></div>
+    <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
+  </section>
 <script>
   'use strict';
   function initialize() {
@@ -271,6 +358,13 @@
       return url.searchParams;
     }
     const fullscreenButton = document.getElementById('page-fullscreen');
+    const drawerFullscreenButton = document.getElementById('drawer-fullscreen');
+    const fullscreenRestoreButton = document.getElementById('fullscreen-restore');
+    const fullscreenStorageKey = 'urlAutofill.fullscreen.v1';
+    let fullscreenWanted = false;
+    let fullscreenRestorePending = false;
+    try { fullscreenWanted = window.localStorage.getItem(fullscreenStorageKey) === '1'; }
+    catch (error) { /* Fullscreen still works without browser storage. */ }
     const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
     const requestFullscreen = element => element.requestFullscreen || element.webkitRequestFullscreen;
     const exitFullscreen = () => document.exitFullscreen || document.webkitExitFullscreen;
@@ -288,19 +382,68 @@
     function syncFullscreen() {
       const active = Boolean(fullscreenElement());
       const label = active ? 'Exit fullscreen' : 'Enter fullscreen';
-      fullscreenButton.hidden = typeof requestFullscreen(document.documentElement) !== 'function' ||
-        typeof exitFullscreen() !== 'function';
+      const supported = typeof requestFullscreen(document.documentElement) === 'function' &&
+        typeof exitFullscreen() === 'function';
+      fullscreenButton.hidden = !supported;
+      drawerFullscreenButton.hidden = !supported;
+      fullscreenRestoreButton.hidden = !supported || !fullscreenWanted || active;
       fullscreenButton.setAttribute('aria-label', label);
       fullscreenButton.setAttribute('aria-pressed', String(active));
       fullscreenButton.title = label;
       fullscreenButton.textContent = active ? '✕' : '⛶';
+      drawerFullscreenButton.textContent = label;
+      drawerFullscreenButton.setAttribute('aria-pressed', String(active));
     }
-    fullscreenButton.addEventListener('click', () => {
-      void changeFullscreen(fullscreenElement() ? null : document.documentElement);
-    });
+    function saveFullscreenWanted(wanted) {
+      fullscreenWanted = wanted;
+      try { window.localStorage.setItem(fullscreenStorageKey, wanted ? '1' : '0'); }
+      catch (error) { /* The fullscreen control still works without browser storage. */ }
+      syncFullscreen();
+    }
+    async function enterPageFullscreen() {
+      await changeFullscreen(document.documentElement);
+      syncFullscreen();
+    }
+    function togglePageFullscreen() {
+      const active = Boolean(fullscreenElement());
+      saveFullscreenWanted(!active);
+      void (active ? changeFullscreen(null) : enterPageFullscreen());
+    }
+    async function restoreFullscreen() {
+      if (!fullscreenWanted || fullscreenElement() || fullscreenRestorePending) return;
+      fullscreenRestorePending = true;
+      try { await enterPageFullscreen(); }
+      finally { fullscreenRestorePending = false; }
+    }
+    fullscreenButton.addEventListener('click', togglePageFullscreen);
+    drawerFullscreenButton.addEventListener('click', togglePageFullscreen);
+    fullscreenRestoreButton.addEventListener('click', () => { void restoreFullscreen(); });
     document.addEventListener('fullscreenchange', syncFullscreen);
     document.addEventListener('webkitfullscreenchange', syncFullscreen);
     syncFullscreen();
+    void restoreFullscreen();
+    const menuToggle = document.getElementById('menu-toggle');
+    const menuClose = document.getElementById('menu-close');
+    const drawer = document.getElementById('drawer');
+    const drawerBackdrop = document.getElementById('drawer-backdrop');
+    function setDrawerOpen(open) {
+      drawer.hidden = !open;
+      drawerBackdrop.hidden = !open;
+      menuToggle.setAttribute('aria-expanded', String(open));
+      menuToggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      if (open) menuClose.focus();
+      else if (drawer.contains(document.activeElement)) menuToggle.focus();
+    }
+    menuToggle.addEventListener('click', () => setDrawerOpen(drawer.hidden));
+    menuClose.addEventListener('click', () => setDrawerOpen(false));
+    drawerBackdrop.addEventListener('click', () => setDrawerOpen(false));
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !drawer.hidden) setDrawerOpen(false);
+    });
+    window.addEventListener('pageshow', () => { void restoreFullscreen(); });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) void restoreFullscreen();
+    });
     const field = document.getElementById('text');
     const replyField = document.getElementById('reply');
     const displayText = document.getElementById('display-text');
@@ -863,6 +1006,7 @@
         catch (error) { /* The view still changes when storage is unavailable. */ }
       }
       syncDisplay();
+      if (!minimal && (field.value || replyField.value)) render();
     }
     minimalToggle.addEventListener('click', () => setMinimal(!document.body.classList.contains('minimal')));
     document.addEventListener('keydown', event => {
@@ -1142,6 +1286,7 @@
         compositionItems.push(entry);
         compositionDuration = Math.max(compositionDuration, entry.end);
       }));
+      document.body.classList.toggle('has-composition', compositionItems.length > 0);
       const laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
       trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
       const ruler = document.createElement('div');
@@ -1428,12 +1573,19 @@
       disposeMedia(output);
       output.textContent = '';
       if (!document.body.classList.contains('minimal')) {
-        const spoken = document.createElement('div');
-        renderValue(spoken, field.value || 'No text to render.', 'text');
-        const reply = document.createElement('div');
-        reply.className = 'rendered-reply';
-        renderValue(reply, replyField.value || 'No assistant reply to render.', 'reply');
-        output.append(spoken, reply);
+        const replyIsMedia = Boolean(mediaType(replyField.value)) ||
+          replyField.value.trim().startsWith('timeline:');
+        const primary = document.createElement('div');
+        renderValue(primary, replyIsMedia ? replyField.value : field.value || 'No text to render.',
+          replyIsMedia ? 'reply' : 'text');
+        output.append(primary);
+        const secondaryValue = replyIsMedia ? field.value : replyField.value;
+        if (secondaryValue) {
+          const secondary = document.createElement('div');
+          secondary.className = 'rendered-reply';
+          renderValue(secondary, secondaryValue, replyIsMedia ? 'text' : 'reply');
+          output.append(secondary);
+        }
       }
       message('Text rendered.');
     }
@@ -1568,7 +1720,7 @@
       saveMemory();
     });
     document.addEventListener('click', event => {
-      if (event.target.closest('#page-fullscreen, #minimal-toggle, .image-controls, .timeline-player, video, audio')) return;
+      if (event.target.closest('#menu-toggle, #drawer, #drawer-backdrop, #page-fullscreen, #fullscreen-restore, #compositor, .image-controls, .timeline-player, video, audio')) return;
       if (document.body.classList.contains('minimal')) run('speak');
     });
     function startup() {
