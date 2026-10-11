@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.4.1</title>
+<title>URL Autofill · v0.4.2</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -90,6 +90,7 @@
     border-radius: 6px; font: 16px system-ui, sans-serif; }
   #clip-library button { min-height: 42px; padding: 7px 12px; font-size: 15px; border-radius: 6px; }
   #clip-library p { margin: 10px 0; color: #b8c8e0; }
+  #clip-status.error { color: #ffb4b4; }
   #clip-list { display: grid; gap: 8px; margin: 12px 0; }
   .clip-row { display: flex; align-items: center; gap: 10px; padding: 8px;
     border: 1px solid #44566f; border-radius: 8px; overflow-wrap: anywhere; }
@@ -109,7 +110,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.4.1</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.4.2</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -127,7 +128,8 @@
       <label for="clip-seconds">Image seconds<input id="clip-seconds" type="number" min="0.1" max="3600" step="0.1" value="3"></label>
       <button type="submit">Save clip</button>
     </form>
-    <button id="save-text-clip" type="button">Save data URI from text field</button>
+    <button id="save-text-clip" type="button">Save data URI</button>
+    <p id="clip-status" role="status" aria-live="polite"></p>
     <p>Clips stay in this browser. Large videos may exceed browser storage.</p>
     <div id="clip-list" aria-label="Stored clips"></div>
     <button id="play-clips" type="button">Play selected clips</button>
@@ -147,7 +149,7 @@
   <p id="status" role="status" aria-live="polite">Ready.</p>
   <div id="output" aria-label="Rendered text" aria-live="polite"></div>
   <details>
-    <summary>Help / About · v0.4.1</summary>
+    <summary>Help / About · v0.4.2</summary>
     <ul>
       <li><code>?minimal=0</code>: shows the full interface for debugging; absent or <code>minimal=1</code> shows only the two texts.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
@@ -808,6 +810,22 @@
     const clipFileField = document.getElementById('clip-file');
     const clipSecondsField = document.getElementById('clip-seconds');
     const clipList = document.getElementById('clip-list');
+    const clipStatus = document.getElementById('clip-status');
+    function clipMessage(text, error = false) {
+      message(text, error);
+      clipStatus.textContent = text;
+      clipStatus.classList.toggle('error', error);
+    }
+    function clipId() {
+      const entered = clipIdField.value.trim();
+      if (entered) return entered;
+      let candidate = `clip-${Date.now()}`;
+      let suffix = 1;
+      while (window.localStorage.getItem(`${mediaStorageKey(candidate)}.meta`) !== null) {
+        candidate = `clip-${Date.now()}-${suffix++}`;
+      }
+      return candidate;
+    }
     function clipSeconds() { return Number(clipSecondsField.value); }
     function refreshClipList(selectId = '') {
       const selected = new Set(Array.from(clipList.querySelectorAll('input:checked'), input => input.value));
@@ -871,14 +889,14 @@
       } catch (error) { clipList.textContent = 'Clip storage is unavailable in this browser.'; }
     }
     function clipError(error) {
-      message(error.name === 'QuotaExceededError' ? 'Browser storage is full. Delete a clip and try again.' :
+      clipMessage(error.name === 'QuotaExceededError' ? 'Browser storage is full. Delete a clip and try again.' :
         error.message, true);
     }
     clipForm.addEventListener('submit', async event => {
       event.preventDefault();
       const file = clipFileField.files?.[0];
-      if (!file) { message('Choose an image or video file.', true); return; }
-      if (!validMime(file.type)) { message('Choose an image or video file.', true); return; }
+      if (!file) { clipMessage('Choose an image or video file.', true); return; }
+      if (!validMime(file.type)) { clipMessage('Choose an image or video file.', true); return; }
       const submit = clipForm.querySelector('button[type=submit]');
       submit.disabled = true;
       try {
@@ -888,7 +906,7 @@
           reader.onerror = () => reject(reader.error || new Error('Could not read the file.'));
           reader.readAsDataURL(file);
         });
-        message(storeWholeMedia(clipIdField.value.trim(), dataUri, clipSeconds()));
+        clipMessage(storeWholeMedia(clipIdField.value.trim(), dataUri, clipSeconds()));
         clipFileField.value = '';
         refreshClipList(clipIdField.value.trim());
       } catch (error) { clipError(error); }
@@ -896,8 +914,10 @@
     });
     document.getElementById('save-text-clip').addEventListener('click', () => {
       try {
-        message(storeWholeMedia(clipIdField.value.trim(), field.value, clipSeconds()));
-        refreshClipList(clipIdField.value.trim());
+        const dataUri = /^data:/i.test(replyField.value.trim()) ? replyField.value : field.value;
+        const id = clipId();
+        clipMessage(storeWholeMedia(id, dataUri, clipSeconds()));
+        refreshClipList(id);
       } catch (error) { clipError(error); }
     });
     document.getElementById('play-clips').addEventListener('click', () => {
