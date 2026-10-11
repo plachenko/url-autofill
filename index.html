@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.6.2</title>
+<title>URL Autofill · v0.6.3</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -154,7 +154,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.6.2</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.6.3</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -209,9 +209,9 @@
     <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
   </section>
   <details>
-    <summary>Help / About · v0.6.2</summary>
+    <summary>Help / About · v0.6.3</summary>
     <ul>
-      <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. <code>?minimal=0</code> or <code>?minimal=1</code> overrides the saved choice for that URL.</li>
+      <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
       <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
         <code>?usage=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
@@ -219,12 +219,12 @@
         use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
         Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
       <li><code>text</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>text=</code>; Full view removes it from the address bar after reading it.</li>
-      <li><code>reply</code>: fills the Assistant reply field. URL-encode special characters.</li>
+      <li><code>r</code>: fills the Assistant reply field. URL-encode special characters. Older <code>reply=</code> links are accepted and shortened to <code>r=</code>.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
       <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
-      <li>Share compositor tracks with <code>?tracks=clip1@0,clip2@3|clip3@1&amp;pos=2.50&amp;minimal=0</code>. Each <code>@</code> value is a start second; <code>pos</code> is the scrubber position. The receiving browser needs the saved clips.</li>
+      <li>Share compositor tracks with <code>?tracks=clip1@0,clip2@3|clip3@1&amp;pos=2.50</code>. Each <code>@</code> value is a start second; <code>pos</code> is the scrubber position. The receiving browser needs the saved clips.</li>
       <li>In the full interface, add saved clips to compositor tracks below the rendered output. Drag tiles to set their start second or move them between tracks. The bottom track appears over earlier tracks. Drag the yellow playhead or click the time ruler to scrub. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
@@ -234,9 +234,9 @@
       <li><code>delay</code>: seconds before the action, including decimals; maximum 3600.
         Invalid or negative values become 0. Cancel stops a pending action.</li>
     </ul>
-    <p><a href="?minimal=1&amp;text=hello&amp;action=render&amp;delay=5"><code>index.html?minimal=1&amp;text=hello&amp;action=render&amp;delay=5</code></a></p>
-    <p><a href="?minimal=1&amp;text=hello&amp;reply=Hi%20there%21&amp;action=render"><code>index.html?minimal=1&amp;text=hello&amp;reply=Hi%20there%21&amp;action=render</code></a></p>
-    <p><a href="?minimal=1&amp;text=hello%20there&amp;action=upper&amp;delay=0.5"><code>index.html?minimal=1&amp;text=hello%20there&amp;action=upper&amp;delay=0.5</code></a></p>
+    <p><a href="?text=hello&amp;action=render&amp;delay=5"><code>index.html?text=hello&amp;action=render&amp;delay=5</code></a></p>
+    <p><a href="?text=hello&amp;r=Hi%20there%21&amp;action=render"><code>index.html?text=hello&amp;r=Hi%20there%21&amp;action=render</code></a></p>
+    <p><a href="?text=hello%20there&amp;action=upper&amp;delay=0.5"><code>index.html?text=hello%20there&amp;action=upper&amp;delay=0.5</code></a></p>
     <p><a href="?memory=Remember%20this&amp;clip=clip-123&amp;action=render"><code>index.html?memory=Remember%20this&amp;clip=clip-123&amp;action=render</code></a></p>
     <p><a href="?memory="><code>index.html?memory=</code></a> clears saved memory.</p>
     <p>Manual Run buttons cancel any pending action. Speech availability depends on the browser;
@@ -804,12 +804,16 @@
     }
     const minimalToggle = document.getElementById('minimal-toggle');
     const minimalStorageKey = 'urlAutofill.minimal.v1';
-    function syncTextParameter(minimal, updateMinimal = false) {
+    function syncTextParameter(minimal) {
       const url = new URL(window.location.href);
       let changed = false;
-      if (updateMinimal && url.searchParams.has('minimal') &&
-          url.searchParams.get('minimal') !== (minimal ? '1' : '0')) {
-        url.searchParams.set('minimal', minimal ? '1' : '0');
+      if (url.searchParams.has('minimal')) {
+        url.searchParams.delete('minimal');
+        changed = true;
+      }
+      if (url.searchParams.has('reply')) {
+        if (!url.searchParams.has('r')) url.searchParams.set('r', url.searchParams.get('reply'));
+        url.searchParams.delete('reply');
         changed = true;
       }
       if (minimal && field.value) {
@@ -831,7 +835,7 @@
       document.body.classList.toggle('minimal', minimal);
       minimalToggle.textContent = minimal ? 'Full view' : 'Minimal view';
       minimalToggle.setAttribute('aria-pressed', String(minimal));
-      syncTextParameter(minimal, persist);
+      syncTextParameter(minimal);
       if (minimal) {
         disposeMedia(output);
         output.textContent = '';
@@ -1079,7 +1083,6 @@
       url.searchParams.set('tracks', tracks.map(track =>
         track.map(clip => `${clip.id}@${clip.start.toFixed(2)}`).join(',')).join('|'));
       url.searchParams.set('pos', compositionTime.toFixed(2));
-      url.searchParams.set('minimal', '0');
       try {
         window.history.replaceState(null, '', url);
         compositorMessage(`Position ${compositionTime.toFixed(2)} seconds is in the URL.`);
@@ -1575,8 +1578,8 @@
       } else {
         field.value = memoryState.text;
       }
-      if (params.has('reply')) {
-        replyField.value = params.get('reply');
+      if (params.has('r') || params.has('reply')) {
+        replyField.value = params.has('r') ? params.get('r') : params.get('reply');
         memoryState.reply = replyField.value;
         changed = true;
       } else {
@@ -1587,7 +1590,8 @@
       let savedMinimal = false;
       try { savedMinimal = window.localStorage.getItem(minimalStorageKey) === '1'; }
       catch (error) { /* Use the full interface when storage is unavailable. */ }
-      setMinimal(params.has('minimal') ? params.get('minimal') === '1' : savedMinimal, false);
+      setMinimal(params.has('minimal') ? params.get('minimal') === '1' : savedMinimal,
+        params.has('minimal'));
       try {
         const savedTracks = JSON.parse(window.localStorage.getItem(compositorKey));
         tracks = validTracks(savedTracks) ? savedTracks : [[]];
