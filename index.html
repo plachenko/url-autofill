@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.6.0</title>
+<title>URL Autofill · v0.6.1</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -143,7 +143,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.6.0</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.6.1</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -198,7 +198,7 @@
     <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
   </section>
   <details>
-    <summary>Help / About · v0.6.0</summary>
+    <summary>Help / About · v0.6.1</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. <code>?minimal=0</code> or <code>?minimal=1</code> overrides the saved choice for that URL.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
@@ -207,7 +207,7 @@
       <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
         use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
         Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
-      <li><code>text</code>: fills the text field. URL-encode special characters.</li>
+      <li><code>text</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>text=</code>; Full view removes it from the address bar after reading it.</li>
       <li><code>reply</code>: fills the Assistant reply field. URL-encode special characters.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
       <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
@@ -223,9 +223,9 @@
       <li><code>delay</code>: seconds before the action, including decimals; maximum 3600.
         Invalid or negative values become 0. Cancel stops a pending action.</li>
     </ul>
-    <p><a href="?text=hello&amp;action=render&amp;delay=5"><code>index.html?text=hello&amp;action=render&amp;delay=5</code></a></p>
-    <p><a href="?text=hello&amp;reply=Hi%20there%21&amp;action=render"><code>index.html?text=hello&amp;reply=Hi%20there%21&amp;action=render</code></a></p>
-    <p><a href="?text=hello%20there&amp;action=upper&amp;delay=0.5"><code>index.html?text=hello%20there&amp;action=upper&amp;delay=0.5</code></a></p>
+    <p><a href="?minimal=1&amp;text=hello&amp;action=render&amp;delay=5"><code>index.html?minimal=1&amp;text=hello&amp;action=render&amp;delay=5</code></a></p>
+    <p><a href="?minimal=1&amp;text=hello&amp;reply=Hi%20there%21&amp;action=render"><code>index.html?minimal=1&amp;text=hello&amp;reply=Hi%20there%21&amp;action=render</code></a></p>
+    <p><a href="?minimal=1&amp;text=hello%20there&amp;action=upper&amp;delay=0.5"><code>index.html?minimal=1&amp;text=hello%20there&amp;action=upper&amp;delay=0.5</code></a></p>
     <p><a href="?memory=Remember%20this&amp;clip=clip-123&amp;action=render"><code>index.html?memory=Remember%20this&amp;clip=clip-123&amp;action=render</code></a></p>
     <p><a href="?memory="><code>index.html?memory=</code></a> clears saved memory.</p>
     <p>Manual Run buttons cancel any pending action. Speech availability depends on the browser;
@@ -793,10 +793,34 @@
     }
     const minimalToggle = document.getElementById('minimal-toggle');
     const minimalStorageKey = 'urlAutofill.minimal.v1';
+    function syncTextParameter(minimal, updateMinimal = false) {
+      const url = new URL(window.location.href);
+      let changed = false;
+      if (updateMinimal && url.searchParams.has('minimal') &&
+          url.searchParams.get('minimal') !== (minimal ? '1' : '0')) {
+        url.searchParams.set('minimal', minimal ? '1' : '0');
+        changed = true;
+      }
+      if (minimal && field.value) {
+        if (url.searchParams.get('text') !== field.value) {
+          url.searchParams.set('text', field.value);
+          changed = true;
+        }
+      } else {
+        if (url.searchParams.has('text')) {
+          url.searchParams.delete('text');
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      try { window.history.replaceState(null, '', url); }
+      catch (error) { /* The text remains in the page when history changes are unavailable. */ }
+    }
     function setMinimal(minimal, persist = true) {
       document.body.classList.toggle('minimal', minimal);
       minimalToggle.textContent = minimal ? 'Full view' : 'Minimal view';
       minimalToggle.setAttribute('aria-pressed', String(minimal));
+      syncTextParameter(minimal, persist);
       if (minimal) {
         disposeMedia(output);
         output.textContent = '';
@@ -856,6 +880,7 @@
     function saveText() {
       memoryState.text = field.value;
       saveMemory();
+      syncTextParameter(document.body.classList.contains('minimal'));
       syncDisplay();
     }
     field.addEventListener('input', saveText);

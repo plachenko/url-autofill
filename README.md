@@ -1,12 +1,12 @@
 # URL Autofill
 
-Car-browser helper page (v0.6.0). Open with query params, for example:
+Car-browser helper page (v0.6.1). Open with query params, for example:
 
-`https://plachenko.github.io/url-autofill/?text=hi&reply=hello&action=speak`
+`https://plachenko.github.io/url-autofill/?minimal=1&text=hi&reply=hello&action=speak`
 
 ## Saved media timeline
 
-The full interface is the default. Use the Minimal view button or `u` key to switch views; the choice is saved in this browser. `?minimal=0` and `?minimal=1` override the saved choice for that URL. In the full interface, the clip library sits below the text field. Enter a clip ID, choose an image or video file, and select **Save clip**. To save a base64 image or video data URI, put it in the Assistant reply field (or the You said field) and choose **Save data URI**. The assistant reply takes priority when both fields contain a data URI. The button creates a clip ID when none is entered and shows the result beside the controls. Saved clips can be added to compositor tracks below the rendered output; newly saved clips are added to the active track automatically. Drag tiles horizontally to change their start second or vertically to move them between tracks; gaps and overlaps are allowed. Their widths and labels show duration; image clips use Image seconds, and video clips use their metadata duration. The preview shows the bottommost active track. Scrub by seconds, then choose **Put position in URL** to put the track layout and current second in the address bar. The layout is also saved in localStorage.
+The full interface is the default. Use the Minimal view button or `u` key to switch views; the choice is saved in this browser. `?minimal=0` and `?minimal=1` override the saved choice for that URL. A `text=` URL value still fills the text field. Minimal view puts the current text in `text=`, including when switching from Full view, and updates it when the text changes. Full view removes `text=` from the address bar after reading it. In the full interface, the clip library sits below the text field. Enter a clip ID, choose an image or video file, and select **Save clip**. To save a base64 image or video data URI, put it in the Assistant reply field (or the You said field) and choose **Save data URI**. The assistant reply takes priority when both fields contain a data URI. The button creates a clip ID when none is entered and shows the result beside the controls. Saved clips can be added to compositor tracks below the rendered output; newly saved clips are added to the active track automatically. Drag tiles horizontally to change their start second or vertically to move them between tracks; gaps and overlaps are allowed. Their widths and labels show duration; image clips use Image seconds, and video clips use their metadata duration. The preview shows the bottommost active track. Scrub by seconds, then choose **Put position in URL** to put the track layout and current second in the address bar. The layout is also saved in localStorage.
 
 Send each base64 chunk in a separate URL to the same browser and origin:
 
