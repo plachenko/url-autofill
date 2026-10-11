@@ -115,12 +115,21 @@
   #track-content { position: relative; min-width: 100%; display: grid; gap: 10px; }
   .track-row { display: flex; width: 100%; min-width: 0; align-items: stretch; gap: 8px; }
   .track-heading { width: 88px; flex: 0 0 88px; font-weight: 700; padding: 12px 0; }
+  .timeline-zoom { position: sticky; left: 0; z-index: 9; display: flex;
+    align-items: center; justify-content: center; gap: 2px; padding: 2px 0;
+    background: #182130; user-select: none; -webkit-user-select: none; }
+  .timeline-zoom button { width: 26px; min-height: 26px !important; padding: 0 !important;
+    font-size: 18px !important; line-height: 1; }
+  .timeline-zoom button:disabled { opacity: .4; cursor: default; }
+  .timeline-zoom span { min-width: 26px; font-size: 11px; text-align: center; }
   .track-lane { position: relative; flex: 1 0 auto; min-width: 200px; min-height: 108px;
     background: #10151e; border: 1px dashed #7085a1; border-radius: 8px; }
   .track-ruler-lane { position: relative; flex: 1 0 auto; min-height: 32px;
-    background: #10151e; border-bottom: 1px solid #7085a1; cursor: crosshair; touch-action: pan-x; }
+    background: #10151e; border-bottom: 1px solid #7085a1; cursor: crosshair; touch-action: pan-x;
+    user-select: none; -webkit-user-select: none; }
   .track-ruler-tick { position: absolute; top: 4px; bottom: 0; padding-left: 4px;
-    border-left: 1px solid #7085a1; color: #b8c8e0; font-size: 12px; white-space: nowrap; }
+    border-left: 1px solid #7085a1; color: #b8c8e0; font-size: 12px; white-space: nowrap;
+    pointer-events: none; }
   #track-playhead { position: absolute; top: 0; bottom: 0; width: 2px;
     background: #ffd976; box-shadow: 0 0 5px #000; pointer-events: none; z-index: 4; }
   #track-playhead button { position: absolute; top: 0; left: -12px; width: 26px;
@@ -217,12 +226,16 @@
     padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom));
     opacity: .3; transition: opacity .15s ease; }
   body.render-focus #compositor:hover, body.render-focus #compositor:focus-within { opacity: 1; }
-  body.render-focus #track-list, body.render-focus #compositor-status { display: none; }
+  body.render-focus #track-list { display: none; }
   #track-list { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-color: #7085a1 #10151e; }
   #track-content { padding-bottom: 4px; }
   .track-lane { min-height: 90px; }
   .clip-tile { min-height: 88px; }
-  #compositor-status { margin: 2px 0 0; max-height: 22px; overflow: hidden; font-size: 12px; }
+  #compositor-status { position: absolute; top: max(84px, calc(env(safe-area-inset-top) + 64px));
+    left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 32px);
+    margin: 0; padding: 4px 10px; transform: translateX(-50%); text-align: center;
+    border-radius: 6px; background: #10151ec9; font-size: 12px; pointer-events: none; }
+  body.minimal #compositor-status { display: none; }
   #menu-toggle, #page-fullscreen { position: fixed; top: max(24px, env(safe-area-inset-top));
     bottom: auto; z-index: 1001; width: 48px; min-height: 48px; padding: 4px;
     border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
@@ -258,7 +271,6 @@
     #compositor { padding-inline: 8px; }
     #compositor button { font-size: 12px; padding-inline: 5px; }
     #composition-time { display: none; }
-    #compositor-status { display: none; }
   }
 </style>
 </head>
@@ -333,6 +345,7 @@
       <li>Share compositor tracks with <code>?tr=clip1@0,clip2@3|clip3@1&amp;at=2.50</code>. Each <code>@</code> value is a start second; trimmed clips add <code>~sourceStart~duration</code>. <code>at</code> is the scrubber position. The receiving browser needs the saved clips.</li>
       <li>Use the menu to save clips. The large preview shows the whole clip frame under the yellow playhead. The red line on its tile marks the current rendered frame. Tap the top of the yellow playhead to lock or unlock the red line; drag the yellow handle or click the ruler to scrub. The bottom strip can expand into tracks or collapse for render focus. Pin locks the preview's internal dimensions while fitting it inside the available area. Drag a clip to move it; the tile follows in real time. Drag its left or right yellow edge to trim it. Snap on aligns nearby seconds and clip edges within 0.2 seconds. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
       <li>Select clips with their check buttons to move them together. Split cuts selected clips at the playhead; with no selection, it cuts the visible clip. Each side must be at least 0.1 seconds long.</li>
+      <li>Expand Tracks and use − or + at the left of the seconds ruler to zoom the timeline. The scale is saved in this browser.</li>
       <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -365,6 +378,7 @@
       <span id="composition-empty">Add clips to a track to preview them.</span>
     </div>
   </div>
+  <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
 </main>
 <section id="compositor" aria-labelledby="compositor-title">
     <h2 id="compositor-title">Video compositor</h2>
@@ -378,7 +392,6 @@
       <button id="timeline-toggle" type="button" aria-controls="track-list" aria-expanded="false">Expand tracks</button>
     </div>
     <div id="track-list" aria-label="Composition tracks"><div id="track-content"></div></div>
-    <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
   </section>
 <script>
   'use strict';
@@ -1143,7 +1156,12 @@
     function clipSeconds() { return Number(clipSecondsField.value); }
     const trackList = document.getElementById('track-list');
     const trackContent = document.getElementById('track-content');
-    const timelineScale = 40;
+    const timelineZoomKey = 'urlAutofill.timelineZoom.v1';
+    let timelineScale = 40;
+    try {
+      const storedZoom = Number(window.localStorage.getItem(timelineZoomKey));
+      if (storedZoom >= 10 && storedZoom <= 160) timelineScale = storedZoom;
+    } catch (error) { /* Keep the default zoom without browser storage. */ }
     const trackLabelWidth = 96;
     let trackPlayhead = null;
     const compositionImage = document.getElementById('composition-image');
@@ -1259,6 +1277,7 @@
     let compositionFrame = 0;
     let compositionStarted = 0;
     let compositionRevision = 0;
+    let rulerResizeObserver = null;
     let visibleItem = null;
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
@@ -1634,6 +1653,7 @@
       const revision = ++compositionRevision;
       stopComposition();
       disposeImagePreview();
+      rulerResizeObserver?.disconnect();
       const existingClips = new Set(tracks.flat());
       for (const clip of selectedClips) if (!existingClips.has(clip)) selectedClips.delete(clip);
       const source = tracks.map(track => track.map(clip => ({ ...clip })));
@@ -1666,29 +1686,87 @@
         output.replaceChildren();
       }
       else if (hadComposition && !document.body.classList.contains('minimal')) render();
-      const laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
+      let laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
       trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
       const ruler = document.createElement('div');
       ruler.className = 'track-row';
       const rulerLabel = document.createElement('div');
-      rulerLabel.className = 'track-heading';
-      rulerLabel.textContent = 'Seconds';
+      rulerLabel.className = 'track-heading timeline-zoom';
+      rulerLabel.setAttribute('aria-label', 'Timeline zoom');
+      const zoomOut = document.createElement('button');
+      zoomOut.type = 'button';
+      zoomOut.textContent = '−';
+      zoomOut.setAttribute('aria-label', 'Zoom timeline out');
+      const zoomValue = document.createElement('span');
+      const zoomIn = document.createElement('button');
+      zoomIn.type = 'button';
+      zoomIn.textContent = '+';
+      zoomIn.setAttribute('aria-label', 'Zoom timeline in');
+      function updateZoomLabel() {
+        zoomValue.textContent = String(timelineScale);
+        zoomValue.title = `${timelineScale} pixels per second`;
+        zoomOut.disabled = timelineScale <= 10;
+        zoomIn.disabled = timelineScale >= 160;
+      }
+      updateZoomLabel();
+      rulerLabel.append(zoomOut, zoomValue, zoomIn);
       const rulerLane = document.createElement('div');
       rulerLane.className = 'track-ruler-lane';
       rulerLane.style.width = `${laneWidth}px`;
-      const tickStep = Math.max(1, Math.ceil(compositionDuration / 60));
-      for (let second = 0; second <= compositionDuration; second += tickStep) {
-        const tick = document.createElement('span');
-        tick.className = 'track-ruler-tick';
-        tick.style.left = `${second * timelineScale}px`;
-        tick.textContent = `${second}s`;
-        rulerLane.append(tick);
+      function renderRulerTicks() {
+        const labelStep = Math.max(1, Math.ceil(40 / timelineScale));
+        const first = Math.max(0, Math.floor((trackList.scrollLeft - trackLabelWidth) /
+          timelineScale) - 1);
+        const last = Math.min(Math.floor((laneWidth - 1) / timelineScale),
+          Math.ceil((trackList.scrollLeft + trackList.clientWidth - trackLabelWidth) /
+            timelineScale) + 1);
+        const ticks = document.createDocumentFragment();
+        for (let second = first; second <= last; second++) {
+          const tick = document.createElement('span');
+          tick.className = 'track-ruler-tick';
+          tick.style.left = `${second * timelineScale}px`;
+          if (second % labelStep === 0) tick.textContent = `${second}s`;
+          ticks.append(tick);
+        }
+        rulerLane.replaceChildren(ticks);
       }
+      function changeTimelineZoom(delta) {
+        const nextScale = Math.max(10, Math.min(160, timelineScale + delta));
+        if (nextScale === timelineScale) return;
+        const centerTime = Math.max(0, (trackList.scrollLeft + trackList.clientWidth / 2 -
+          trackLabelWidth) / timelineScale);
+        timelineScale = nextScale;
+        try { window.localStorage.setItem(timelineZoomKey, String(timelineScale)); }
+        catch (error) { /* Zoom still works without browser storage. */ }
+        updateZoomLabel();
+        laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
+        trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
+        trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(lane => {
+          lane.style.width = `${laneWidth}px`;
+        });
+        for (const entry of compositionItems) {
+          if (!entry.tile) continue;
+          entry.tile.style.left = `${Math.round(entry.start * timelineScale)}px`;
+          entry.tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
+        }
+        syncCompositionPreview();
+        trackList.scrollLeft = Math.max(0, trackLabelWidth + centerTime * timelineScale -
+          trackList.clientWidth / 2);
+        renderRulerTicks();
+      }
+      zoomOut.addEventListener('click', () => changeTimelineZoom(-10));
+      zoomIn.addEventListener('click', () => changeTimelineZoom(10));
       rulerLane.addEventListener('pointerdown', event => {
         setCompositionTime((event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       });
       ruler.append(rulerLabel, rulerLane);
       trackContent.append(ruler);
+      trackList.onscroll = renderRulerTicks;
+      if (typeof ResizeObserver === 'function') {
+        rulerResizeObserver = new ResizeObserver(renderRulerTicks);
+        rulerResizeObserver.observe(trackList);
+      }
+      renderRulerTicks();
       const playhead = document.createElement('div');
       playhead.id = 'track-playhead';
       const playheadHandle = document.createElement('button');
@@ -1830,10 +1908,12 @@
             compositionDuration = Math.max(0, ...compositionItems.map(value => value.end));
             compositionScrubber.max = String(compositionDuration);
             const liveLaneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
+            laneWidth = liveLaneWidth;
             trackContent.style.width = `${trackLabelWidth + liveLaneWidth}px`;
             trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(lane => {
               lane.style.width = `${liveLaneWidth}px`;
             });
+            renderRulerTicks();
             syncCompositionPreview(true);
           }
           const grip = document.createElement('div');
@@ -1943,10 +2023,12 @@
               compositionDuration = Math.max(0, ...compositionItems.map(value => value.end));
               compositionScrubber.max = String(compositionDuration);
               const liveLaneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
+              laneWidth = liveLaneWidth;
               trackContent.style.width = `${trackLabelWidth + liveLaneWidth}px`;
               trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(value => {
                 value.style.width = `${liveLaneWidth}px`;
               });
+              renderRulerTicks();
               syncCompositionPreview(true);
               compositorMessage(`${moving.length} clip${moving.length === 1 ? '' : 's'}: ${liveStart.toFixed(2)}s on track ${liveTrack + 1}`);
             };
