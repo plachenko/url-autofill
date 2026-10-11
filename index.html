@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.6.1</title>
+<title>URL Autofill · v0.6.2</title>
 <style>
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
@@ -101,7 +101,7 @@
   .clip-row label { flex: 1; margin: 0; font-size: 15px; font-weight: 400; }
   .clip-row input { width: 20px; height: 20px; vertical-align: middle; }
   .clip-row button { flex: 0 0 auto; background: #75393f; }
-  #compositor { margin-top: 24px; padding: 16px; background: #182130;
+  #compositor { min-width: 0; max-width: 100%; margin-top: 24px; padding: 16px; background: #182130;
     border: 1px solid #7085a1; border-radius: 12px; font-size: 16px; }
   #compositor h2 { margin: 0 0 12px; font-size: 22px; }
   .compositor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
@@ -111,11 +111,22 @@
   #composition-preview img, #composition-preview video { max-width: 100%; max-height: 55vh; }
   #composition-preview [hidden] { display: none; }
   #composition-scrubber { width: 100%; margin: 12px 0 4px; }
-  #track-list { display: grid; gap: 10px; overflow-x: auto; }
-  .track-row { display: flex; min-width: max-content; align-items: stretch; gap: 8px; }
+  #track-list { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; }
+  #track-content { position: relative; min-width: 100%; display: grid; gap: 10px; }
+  .track-row { display: flex; width: 100%; min-width: 0; align-items: stretch; gap: 8px; }
   .track-heading { width: 88px; flex: 0 0 88px; font-weight: 700; padding: 12px 0; }
-  .track-lane { position: relative; flex: 0 0 auto; min-width: 200px; min-height: 108px;
+  .track-lane { position: relative; flex: 1 0 auto; min-width: 200px; min-height: 108px;
     background: #10151e; border: 1px dashed #7085a1; border-radius: 8px; }
+  .track-ruler-lane { position: relative; flex: 1 0 auto; min-height: 32px;
+    background: #10151e; border-bottom: 1px solid #7085a1; cursor: crosshair; touch-action: pan-x; }
+  .track-ruler-tick { position: absolute; top: 4px; bottom: 0; padding-left: 4px;
+    border-left: 1px solid #7085a1; color: #b8c8e0; font-size: 12px; white-space: nowrap; }
+  #track-playhead { position: absolute; top: 0; bottom: 0; width: 2px;
+    background: #ffd976; box-shadow: 0 0 5px #000; pointer-events: none; z-index: 4; }
+  #track-playhead button { position: absolute; top: 0; left: -12px; width: 26px;
+    min-height: 30px; padding: 0; border-radius: 4px; color: #10151e;
+    background: #ffd976; border-color: #ffd976; cursor: ew-resize;
+    touch-action: none; pointer-events: auto; }
   .clip-tile { position: absolute; top: 0; min-height: 106px; overflow: hidden;
     background: #284e82; border: 1px solid #7799cb; border-radius: 7px; }
   .clip-tile.dragging { opacity: .6; z-index: 2; }
@@ -143,7 +154,7 @@
     <div id="display-text" class="plain-text"></div>
     <div id="display-reply" class="plain-text"></div>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.6.1</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.6.2</span></header>
   <div class="memory-bar" aria-label="Persistent memory">
     <span>Memory: <span id="memory-value">—</span></span>
     <span>Clip ID: <span id="clip-value">—</span></span>
@@ -194,11 +205,11 @@
       <button id="add-track" type="button">Add track</button>
       <button id="position-url" type="button">Put position in URL</button>
     </div>
-    <div id="track-list" aria-label="Composition tracks"></div>
+    <div id="track-list" aria-label="Composition tracks"><div id="track-content"></div></div>
     <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
   </section>
   <details>
-    <summary>Help / About · v0.6.1</summary>
+    <summary>Help / About · v0.6.2</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. <code>?minimal=0</code> or <code>?minimal=1</code> overrides the saved choice for that URL.</li>
       <li>The corner fullscreen button enters or exits page fullscreen, including in minimal mode; Esc also exits. It is hidden when page fullscreen is unsupported.</li>
@@ -214,7 +225,7 @@
       <li>Store a base64 image or video in pieces with <code>?store=clip1&amp;part=1&amp;total=2&amp;mime=image/png&amp;data=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>seconds=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
       <li>Play saved items in order with <code>?timeline=clip1,clip2</code>. The player advances after each video or image. Use <code>?delete=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
       <li>Share compositor tracks with <code>?tracks=clip1@0,clip2@3|clip3@1&amp;pos=2.50&amp;minimal=0</code>. Each <code>@</code> value is a start second; <code>pos</code> is the scrubber position. The receiving browser needs the saved clips.</li>
-      <li>In the full interface, add saved clips to compositor tracks below the rendered output. Drag tiles to set their start second or move them between tracks. The bottom track appears over earlier tracks. Scrub by seconds and use Put position in URL to share the layout and current position.</li>
+      <li>In the full interface, add saved clips to compositor tracks below the rendered output. Drag tiles to set their start second or move them between tracks. The bottom track appears over earlier tracks. Drag the yellow playhead or click the time ruler to scrub. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
       <li><code>action</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
       <li><code>action=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>speak=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
@@ -916,6 +927,10 @@
     }
     function clipSeconds() { return Number(clipSecondsField.value); }
     const trackList = document.getElementById('track-list');
+    const trackContent = document.getElementById('track-content');
+    const timelineScale = 40;
+    const trackLabelWidth = 96;
+    let trackPlayhead = null;
     const compositionImage = document.getElementById('composition-image');
     const compositionVideo = document.getElementById('composition-video');
     const compositionEmpty = document.getElementById('composition-empty');
@@ -1014,6 +1029,18 @@
       }
       compositionScrubber.value = String(compositionTime);
       compositionTimeLabel.textContent = `${compositionTime.toFixed(2)} / ${compositionDuration.toFixed(2)} seconds`;
+      if (trackPlayhead) {
+        const x = trackLabelWidth + compositionTime * timelineScale;
+        trackPlayhead.style.left = `${x}px`;
+        const handle = trackPlayhead.firstElementChild;
+        handle.setAttribute('aria-valuemax', String(compositionDuration));
+        handle.setAttribute('aria-valuenow', compositionTime.toFixed(2));
+        handle.setAttribute('aria-valuetext', `${compositionTime.toFixed(2)} seconds`);
+        if (trackList.clientWidth && (x < trackList.scrollLeft + trackLabelWidth ||
+            x > trackList.scrollLeft + trackList.clientWidth - 16)) {
+          trackList.scrollLeft = Math.max(0, x - trackList.clientWidth / 2);
+        }
+      }
     }
     function setCompositionTime(seconds, seek = true) {
       compositionTime = Math.max(0, Math.min(compositionDuration, seconds));
@@ -1082,7 +1109,7 @@
       }
       compositionItems = [];
       compositionDuration = 0;
-      trackList.replaceChildren();
+      trackContent.replaceChildren();
       let detailIndex = 0;
       const trackDetails = source.map(track => track.map(() => details[detailIndex++]));
       let focusGrip = null;
@@ -1094,6 +1121,61 @@
         compositionItems.push(entry);
         compositionDuration = Math.max(compositionDuration, entry.end);
       }));
+      const laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
+      trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
+      const ruler = document.createElement('div');
+      ruler.className = 'track-row';
+      const rulerLabel = document.createElement('div');
+      rulerLabel.className = 'track-heading';
+      rulerLabel.textContent = 'Seconds';
+      const rulerLane = document.createElement('div');
+      rulerLane.className = 'track-ruler-lane';
+      rulerLane.style.width = `${laneWidth}px`;
+      const tickStep = Math.max(1, Math.ceil(compositionDuration / 60));
+      for (let second = 0; second <= compositionDuration; second += tickStep) {
+        const tick = document.createElement('span');
+        tick.className = 'track-ruler-tick';
+        tick.style.left = `${second * timelineScale}px`;
+        tick.textContent = `${second}s`;
+        rulerLane.append(tick);
+      }
+      rulerLane.addEventListener('pointerdown', event => {
+        setCompositionTime((event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
+      });
+      ruler.append(rulerLabel, rulerLane);
+      trackContent.append(ruler);
+      const playhead = document.createElement('div');
+      playhead.id = 'track-playhead';
+      const playheadHandle = document.createElement('button');
+      playheadHandle.type = 'button';
+      playheadHandle.textContent = '▼';
+      playheadHandle.setAttribute('role', 'slider');
+      playheadHandle.setAttribute('aria-label', 'Track playhead in seconds');
+      playheadHandle.setAttribute('aria-valuemin', '0');
+      let draggingPlayhead = false;
+      const seekFromPointer = event => setCompositionTime(
+        (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
+      playheadHandle.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        draggingPlayhead = true;
+        playheadHandle.setPointerCapture(event.pointerId);
+        seekFromPointer(event);
+      });
+      playheadHandle.addEventListener('pointermove', event => {
+        if (draggingPlayhead) seekFromPointer(event);
+      });
+      const finishScrub = () => { draggingPlayhead = false; };
+      playheadHandle.addEventListener('pointerup', finishScrub);
+      playheadHandle.addEventListener('pointercancel', finishScrub);
+      playheadHandle.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        setCompositionTime(compositionTime + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1));
+      });
+      playhead.append(playheadHandle);
+      trackPlayhead = playhead;
+      trackContent.append(playhead);
       source.forEach((track, trackIndex) => {
         const row = document.createElement('div');
         row.className = 'track-row';
@@ -1106,7 +1188,7 @@
         const lane = document.createElement('div');
         lane.className = 'track-lane';
         lane.dataset.track = String(trackIndex);
-        lane.style.width = `${Math.max(200, Math.ceil(compositionDuration * 40) + 80)}px`;
+        lane.style.width = `${laneWidth}px`;
         track.forEach((clip, clipIndex) => {
           const item = trackDetails[trackIndex][clipIndex];
           if (!item) return;
@@ -1114,8 +1196,8 @@
           const tile = document.createElement('div');
           tile.className = 'clip-tile';
           tile.dataset.index = String(clipIndex);
-          tile.style.left = `${Math.round(clip.start * 40)}px`;
-          tile.style.width = `${Math.min(2000, Math.max(88, Math.round(item.duration * 40)))}px`;
+          tile.style.left = `${Math.round(clip.start * timelineScale)}px`;
+          tile.style.width = `${Math.min(2000, Math.max(88, Math.round(item.duration * timelineScale)))}px`;
           const thumbnail = document.createElement(item.type === 'video' ? 'video' : 'img');
           thumbnail.src = item.src;
           if (item.type === 'video') {
@@ -1184,7 +1266,7 @@
               if (!targetLane) return;
               const destinationTrack = Number(targetLane.dataset.track);
               const destinationStart = Math.min(86400, Math.max(0, Math.round((endEvent.clientX - grabOffset -
-                targetLane.getBoundingClientRect().left) / 4) / 10));
+                targetLane.getBoundingClientRect().left) / timelineScale * 10) / 10));
               tracks[trackIndex].splice(clipIndex, 1);
               tracks[destinationTrack].push({ id, start: destinationStart });
               tracks[destinationTrack].sort((a, b) => a.start - b.start);
@@ -1216,7 +1298,7 @@
           lane.append(tile);
         });
         row.append(heading, lane);
-        trackList.append(row);
+        trackContent.append(row);
       });
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
