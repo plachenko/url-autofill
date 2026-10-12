@@ -623,6 +623,11 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
     const clipSecondsField = document.getElementById('clip-seconds');
     const clipList = document.getElementById('clip-list');
     const clipStatus = document.getElementById('clip-status');
+    const timelineImageForm = document.getElementById('timeline-image-form');
+    const timelineImageId = document.getElementById('timeline-image-id');
+    const timelineImageSource = document.getElementById('timeline-image-source');
+    const timelineImageList = document.getElementById('timeline-image-list');
+    const timelineImageStatus = document.getElementById('timeline-image-status');
     function clipMessage(text, error = false) {
       message(text, error);
       clipStatus.textContent = text;
@@ -1818,6 +1823,7 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
     }
     function refreshClipList() {
       clipList.replaceChildren();
+      timelineImageList.replaceChildren();
       try {
         const clips = [];
         for (let index = 0; index < window.localStorage.length; index++) {
@@ -1839,8 +1845,22 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
           clips.push({ id: match[1], mime: meta.mime, parts, total: meta.total, length });
         }
         clips.sort((a, b) => a.id.localeCompare(b.id));
-        if (!clips.length) { clipList.textContent = 'No clips saved yet.'; return; }
+        if (!clips.length) {
+          clipList.textContent = 'No clips saved yet.';
+          timelineImageList.textContent = 'No image clips saved.';
+          return;
+        }
         for (const clip of clips) {
+          if (clip.mime.startsWith('image/')) {
+            const imageAdd = document.createElement('button');
+            imageAdd.type = 'button';
+            imageAdd.textContent = `+ ${clip.id}`;
+            imageAdd.title = `Add ${clip.id} to track ${activeTrack + 1}`;
+            imageAdd.setAttribute('aria-label', imageAdd.title);
+            imageAdd.disabled = clip.parts !== clip.total;
+            imageAdd.addEventListener('click', () => addClipToTrack(clip.id));
+            timelineImageList.append(imageAdd);
+          }
           const row = document.createElement('div');
           row.className = 'clip-row';
           const description = document.createElement('span');
@@ -1876,8 +1896,80 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
           row.append(description, add, remove);
           clipList.append(row);
         }
-      } catch (error) { clipList.textContent = 'Clip storage is unavailable in this browser.'; }
+        if (!timelineImageList.childElementCount)
+          timelineImageList.textContent = 'No image clips saved.';
+      } catch (error) {
+        clipList.textContent = 'Clip storage is unavailable in this browser.';
+        timelineImageList.textContent = 'Clip storage is unavailable.';
+      }
     }
+    let pastedTimelineImage = null;
+    timelineImageSource.addEventListener('paste', event => {
+      const image = Array.from(event.clipboardData?.files || [])
+        .find(file => file.type.startsWith('image/')) ||
+        Array.from(event.clipboardData?.items || [])
+          .find(item => item.type.startsWith('image/'))?.getAsFile();
+      if (!image) return;
+      event.preventDefault();
+      pastedTimelineImage = image;
+      timelineImageSource.value = `Pasted image (${image.type})`;
+    });
+    timelineImageSource.addEventListener('input', () => { pastedTimelineImage = null; });
+    function readImageFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error('Could not read the image.'));
+        reader.readAsDataURL(file);
+      });
+    }
+    timelineImageForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const submit = timelineImageForm.querySelector('button[type=submit]');
+      submit.disabled = true;
+      timelineImageStatus.hidden = false;
+      timelineImageStatus.classList.remove('error');
+      timelineImageStatus.textContent = 'Saving image…';
+      try {
+        let dataUri;
+        if (pastedTimelineImage) dataUri = await readImageFile(pastedTimelineImage);
+        else {
+          const source = timelineImageSource.value.trim();
+          if (/^data:image\//i.test(source)) dataUri = source;
+          else {
+            const url = new URL(source);
+            if (!['http:', 'https:'].includes(url.protocol))
+              throw new Error('Paste an image, image URL, or image data URI.');
+            let response;
+            try { response = await fetch(url.href); }
+            catch (error) {
+              throw new Error('Could not import this URL. Try copying the image and pasting it instead.');
+            }
+            if (!response.ok) throw new Error(`Image URL returned HTTP ${response.status}.`);
+            const image = await response.blob();
+            if (!image.type.startsWith('image/'))
+              throw new Error('The URL did not return an image.');
+            dataUri = await readImageFile(image);
+          }
+        }
+        const entered = timelineImageId.value.trim();
+        const base = `image-${Date.now()}`;
+        let id = entered || base;
+        for (let suffix = 1; !entered &&
+            window.localStorage.getItem(`${mediaStorageKey(id)}.meta`) !== null; suffix++)
+          id = `${base}-${suffix}`;
+        const result = storeWholeMedia(id, dataUri, 3);
+        timelineImageStatus.textContent = result;
+        clipMessage(result);
+        timelineImageForm.reset();
+        pastedTimelineImage = null;
+        refreshClipList();
+      } catch (error) {
+        timelineImageStatus.textContent = error instanceof TypeError ?
+          'Paste an image, image URL, or image data URI.' : error.message;
+        timelineImageStatus.classList.add('error');
+      } finally { submit.disabled = false; }
+    });
     function clipError(error) {
       clipMessage(error.name === 'QuotaExceededError' ? 'Browser storage is full. Delete a clip and try again.' :
         error.message, true);
