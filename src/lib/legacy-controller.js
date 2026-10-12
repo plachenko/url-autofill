@@ -643,7 +643,11 @@ import { clearAppStorage, createSessionBackup, restoreSessionBackup } from './ap
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = objectUrl;
-        link.download = `url-autofill-session-${new Date().toISOString().slice(0, 10)}.json`;
+        const defaultName = `url-autofill-session-${new Date().toISOString().slice(0, 10)}`;
+        const enteredName = document.getElementById('session-filename').value.trim()
+          .replace(/[\\/:*?"<>|\x00-\x1f]/g, '-');
+        const baseName = enteredName || defaultName;
+        link.download = /\.json$/i.test(baseName) ? baseName : `${baseName}.json`;
         document.body.append(link);
         link.click();
         link.remove();

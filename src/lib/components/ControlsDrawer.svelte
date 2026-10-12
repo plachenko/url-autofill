@@ -41,6 +41,8 @@
     <button id="cancel" type="button">Cancel</button>
   </div>
   <p id="status" role="status" aria-live="polite">Ready.</p>
+  <label class="session-filename-label" for="session-filename">Session filename</label>
+  <input id="session-filename" type="text" maxlength="150" autocomplete="off" spellcheck="false" placeholder="Default: url-autofill-session-YYYY-MM-DD.json">
   <div class="session-file-actions" aria-label="Session backup">
     <button id="download-session" type="button">Download session</button>
     <button id="restore-session" type="button">Restore session</button>

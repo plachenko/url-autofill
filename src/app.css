@@ -308,6 +308,9 @@
   #drawer .buttons { gap: 6px; margin: 14px 0; }
   #drawer .buttons button { min-width: 0; }
   #drawer #clip-library { margin: 16px 0; padding: 12px; }
+  .session-filename-label { margin-top: 12px; }
+  #session-filename { width: 100%; min-height: 42px; padding: 8px; font: inherit;
+    color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 8px; }
   .session-file-actions { display: flex; gap: 8px; margin-top: 12px; }
   .session-file-actions button { flex: 1 1 0; min-width: 0; }
   #clear-saved-data { width: 100%; margin-top: 12px; background: #75393f;
