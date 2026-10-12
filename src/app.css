@@ -308,6 +308,8 @@
   #drawer .buttons { gap: 6px; margin: 14px 0; }
   #drawer .buttons button { min-width: 0; }
   #drawer #clip-library { margin: 16px 0; padding: 12px; }
+  #clear-saved-data { width: 100%; margin-top: 12px; background: #75393f;
+    border-color: #b26d74; }
   .drawer-timeline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
   .drawer-timeline-actions button { flex: 1 1 150px; }
   body.browser-timeline-zoom #track-list,

@@ -41,5 +41,6 @@
     <button id="cancel" type="button">Cancel</button>
   </div>
   <p id="status" role="status" aria-live="polite">Ready.</p>
+  <button id="clear-saved-data" type="button">Clear saved data</button>
   <HelpPanel />
 </aside>

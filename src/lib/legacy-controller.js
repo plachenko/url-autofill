@@ -1,8 +1,10 @@
 import { compactParams } from "./url-parameters.js";
 import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia } from "./media-store.js";
+import { clearAppStorage } from './app-storage.js';
 
   'use strict';
   export function initialize() {
+    let clearingSavedData = false;
     const fullscreenButton = document.getElementById('page-fullscreen');
     const drawerFullscreenButton = document.getElementById('drawer-fullscreen');
     const fullscreenRestoreButton = document.getElementById('fullscreen-restore');
@@ -617,6 +619,20 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
       status.textContent = text;
       status.classList.toggle('error', error);
     }
+    document.getElementById('clear-saved-data').addEventListener('click', () => {
+      if (!window.confirm('Delete all URL Autofill clips, tracks, text, memory, and preferences saved in this browser? This cannot be undone.')) return;
+      try {
+        clearAppStorage(window.localStorage);
+        clearingSavedData = true;
+        const url = new URL(window.location.href);
+        url.search = '';
+        url.hash = '';
+        window.location.replace(url.href);
+      } catch (error) {
+        message(clearingSavedData ? 'Saved data was cleared. Reload this page to reset the view.' :
+          'Could not clear saved data in this browser.', true);
+      }
+    });
     const clipForm = document.getElementById('clip-form');
     const clipIdField = document.getElementById('clip-id');
     const clipFileField = document.getElementById('clip-file');
@@ -747,6 +763,7 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
     } catch (error) { /* Start a fresh timeline session. */ }
     let lastSessionSave = 0;
     function saveSession(force = false) {
+      if (clearingSavedData) return;
       const now = Date.now();
       if (!force && now - lastSessionSave < 500) return;
       lastSessionSave = now;
