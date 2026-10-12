@@ -104,7 +104,9 @@
     display: grid; gap: 10px; }
   .track-row { display: flex; width: max-content; min-width: 100%;
     align-items: stretch; gap: 8px; }
-  .track-heading { width: 88px; flex: 0 0 88px; font-weight: 700; padding: 12px 0; }
+  .track-heading { position: sticky; left: 0; z-index: 8; width: 88px; flex: 0 0 88px;
+    font-weight: 700; padding: 12px 0; background: #284e82;
+    box-shadow: 4px 0 8px #10151e99; }
   .timeline-zoom { position: sticky; left: 0; z-index: 9; display: flex;
     align-items: center; justify-content: center; gap: 2px; padding: 2px 0;
     background: #182130; user-select: none; -webkit-user-select: none; }
