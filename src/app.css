@@ -244,7 +244,7 @@
   #timeline-image-status.error { color: #ffb4b4; }
   body.render-focus #compositor { flex-basis: calc(44px + env(safe-area-inset-bottom));
     padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom));
-    opacity: .3; transition: opacity .15s ease; }
+    opacity: .3; transition: opacity .15s ease; touch-action: pan-x; }
   body.render-focus #compositor:hover, body.render-focus #compositor:focus-within { opacity: 1; }
   body.render-focus #track-list { display: none; }
   #track-list { flex: 1 1 auto; min-height: 0; overflow: auto;
@@ -272,7 +272,7 @@
   body.screenplay-mode #screenplay-workspace { display: block; }
   body.screenplay-mode #render-surface, body.screenplay-mode #compositor,
   body.screenplay-mode #minimal-toggle { display: none; }
-  #menu-toggle, #page-fullscreen { position: fixed; top: max(12px, env(safe-area-inset-top));
+  #menu-toggle, #page-fullscreen, #tesla-theater-button { position: fixed; top: max(12px, env(safe-area-inset-top));
     bottom: auto; z-index: 1001; width: 44px; min-height: 44px; padding: 4px;
     border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
     font-size: 24px; }
@@ -284,6 +284,8 @@
   #page-fullscreen[aria-pressed="true"] .icon-exit { display: block; }
   #menu-toggle { left: max(12px, env(safe-area-inset-left)); }
   #page-fullscreen { right: max(12px, env(safe-area-inset-right)); }
+  #tesla-theater-button { right: max(64px, calc(env(safe-area-inset-right) + 52px)); }
+  #tesla-theater-button img { display: block; width: 34px; height: auto; margin: auto; }
   #fullscreen-restore { position: fixed; top: max(62px, calc(env(safe-area-inset-top) + 50px));
     right: max(12px, env(safe-area-inset-right)); z-index: 1001; min-height: 40px;
     padding: 6px 10px; font-size: 14px; background: #284e82e8; }
@@ -310,6 +312,7 @@
     font: inherit; color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 8px; }
   .project-actions { display: flex; gap: 8px; margin-top: 12px; }
   .project-actions button { flex: 1 1 0; min-width: 0; }
+  .scene-controls { margin-top: 16px; padding-top: 14px; border-top: 1px solid #7085a1; }
   .session-filename-label { margin-top: 12px; }
   #session-filename { width: 100%; min-height: 42px; padding: 8px; font: inherit;
     color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 8px; }

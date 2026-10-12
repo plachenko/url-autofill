@@ -50,6 +50,17 @@
       <button id="rename-project" type="button">Rename</button>
       <button id="delete-project" type="button">Delete</button>
     </div>
+    <div class="scene-controls" aria-label="Scenes">
+      <label for="scene-select">Scene</label>
+      <select id="scene-select"></select>
+      <label for="scene-name">Rename current scene</label>
+      <input id="scene-name" type="text" maxlength="80" autocomplete="off" placeholder="Scene name">
+      <div class="project-actions">
+        <button id="new-scene" type="button">New</button>
+        <button id="rename-scene" type="button">Rename</button>
+        <button id="delete-scene" type="button">Delete</button>
+      </div>
+    </div>
   </section>
   <label class="session-filename-label" for="session-filename">Session filename</label>
   <input id="session-filename" type="text" maxlength="150" autocomplete="off" spellcheck="false" placeholder="Default: url-autofill-session-YYYY-MM-DD.json">

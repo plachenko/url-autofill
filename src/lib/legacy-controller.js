@@ -2,6 +2,7 @@ import { compactParams } from "./url-parameters.js";
 import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia } from "./media-store.js";
 import { clearAllAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
 import { createProject, deleteProject, listProjects, renameProject, switchProject } from './project-store.js';
+import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
 
   'use strict';
   export function initialize() {
@@ -66,8 +67,11 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
     fullscreenButton.addEventListener('click', togglePageFullscreen);
     drawerFullscreenButton.addEventListener('click', togglePageFullscreen);
     const teslaFullscreenButton = document.getElementById('tesla-fullscreen');
-    teslaFullscreenButton.disabled = !/^https?:$/.test(window.location.protocol);
-    teslaFullscreenButton.addEventListener('click', () => {
+    const teslaTheaterButton = document.getElementById('tesla-theater-button');
+    const teslaSupported = /^https?:$/.test(window.location.protocol);
+    teslaFullscreenButton.disabled = !teslaSupported;
+    teslaTheaterButton.disabled = !teslaSupported;
+    function openTeslaTheater() {
       const target = new URL(window.location.href);
       const mode = target.searchParams.get('m')?.toLowerCase();
       target.search = '';
@@ -78,7 +82,9 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
       const theater = new URL('https://www.youtube.com/redirect');
       theater.searchParams.set('q', target.href);
       window.location.assign(theater.href);
-    });
+    }
+    teslaFullscreenButton.addEventListener('click', openTeslaTheater);
+    teslaTheaterButton.addEventListener('click', openTeslaTheater);
     fullscreenRestoreButton.addEventListener('click', () => { void restoreFullscreen(); });
     document.addEventListener('fullscreenchange', syncFullscreen);
     document.addEventListener('webkitfullscreenchange', syncFullscreen);
@@ -694,6 +700,55 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
         deleteProject(window.localStorage, activeId);
         loadActiveProject();
       } catch (error) { message(`Could not delete project: ${error.message}`, true); }
+    });
+    const sceneSelect = document.getElementById('scene-select');
+    const sceneNameField = document.getElementById('scene-name');
+    function showScenes() {
+      const { activeId, scenes } = listScenes(window.localStorage);
+      sceneSelect.replaceChildren(...scenes.map(scene => new Option(scene.name, scene.id)));
+      sceneSelect.value = activeId;
+      sceneNameField.value = scenes.find(scene => scene.id === activeId).name;
+      document.getElementById('delete-scene').disabled = scenes.length === 1;
+      return { activeId, scenes };
+    }
+    try { showScenes(); }
+    catch (error) { message(`Could not load scenes: ${error.message}`, true); }
+    sceneSelect.addEventListener('change', async () => {
+      try {
+        await saveCurrentProject();
+        switchScene(window.localStorage, sceneSelect.value);
+        loadActiveProject();
+      } catch (error) {
+        try { showScenes(); } catch { /* Keep the error visible. */ }
+        message(`Could not switch scenes: ${error.message}`, true);
+      }
+    });
+    document.getElementById('new-scene').addEventListener('click', async () => {
+      try {
+        const count = listScenes(window.localStorage).scenes.length;
+        const name = window.prompt('Name for new scene', `Scene ${count + 1}`);
+        if (name === null) return;
+        await saveCurrentProject();
+        createScene(window.localStorage, name);
+        loadActiveProject();
+      } catch (error) { message(`Could not create scene: ${error.message}`, true); }
+    });
+    document.getElementById('rename-scene').addEventListener('click', () => {
+      try {
+        renameScene(window.localStorage, listScenes(window.localStorage).activeId,
+          sceneNameField.value);
+        showScenes();
+        message('Scene renamed.');
+      } catch (error) { message(`Could not rename scene: ${error.message}`, true); }
+    });
+    document.getElementById('delete-scene').addEventListener('click', () => {
+      try {
+        const { activeId, scenes } = listScenes(window.localStorage);
+        const name = scenes.find(scene => scene.id === activeId).name;
+        if (!window.confirm(`Delete scene "${name}" and its timeline and text? This cannot be undone.`)) return;
+        deleteScene(window.localStorage, activeId);
+        loadActiveProject();
+      } catch (error) { message(`Could not delete scene: ${error.message}`, true); }
     });
     document.getElementById('download-session').addEventListener('click', async () => {
       try {
@@ -2276,7 +2331,7 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
       saveMemory();
     });
     document.addEventListener('click', event => {
-      if (event.target.closest('#menu-toggle, #drawer, #drawer-backdrop, #page-fullscreen, #fullscreen-restore, #compositor, .image-controls, .timeline-player, video, audio')) return;
+      if (event.target.closest('#menu-toggle, #drawer, #drawer-backdrop, #page-fullscreen, #tesla-theater-button, #fullscreen-restore, #compositor, .image-controls, .timeline-player, video, audio')) return;
       if (document.body.classList.contains('minimal')) run('speak');
     });
     function startup() {

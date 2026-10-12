@@ -3,8 +3,8 @@
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
       <li>Clear saved data in the menu removes this app's clips, tracks, text, memory, pane sizes, and preferences from this browser after confirmation.</li>
-      <li>Download session saves this app's clips, tracks, text, pane sizes, and preferences to a JSON file. Restore session replaces the current saved data with a selected session file after confirmation.</li>
-      <li>Projects keep separate sessions in this browser. Create a project, choose one from the list to switch, or rename the current project. Download session saves the active project.</li>
+      <li>Download session saves the active project's clips, scenes, tracks, text, pane sizes, and preferences to a JSON file. Restore session replaces the current project's saved data with a selected session file after confirmation.</li>
+      <li>Projects keep separate sessions in this browser. Each project has named scenes with separate text, tracks, and playhead positions; its saved clips are shared between scenes. Create or select a project, then create or select a scene within it.</li>
       <li><code>m=e</code> opens the timeline editor; <code>m=sp</code> opens a screenplay writing page. <code>m=editor</code> and <code>m=screenplay</code> also work. Use the mode buttons above to switch.</li>
       <li>The top right button enters or exits page fullscreen. The choice is saved in this browser. If a browser blocks automatic restoration, use Restore fullscreen. Esc also exits fullscreen.</li>
       <li>Tesla Theater fullscreen opens this page through YouTube's redirect while the car is parked. If YouTube shows a confirmation page, choose Go to site. Text and clips saved in this browser remain available; URL query values are removed before redirecting, except the current mode.</li>
