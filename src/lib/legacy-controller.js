@@ -792,6 +792,12 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
     setBrowserZoom(browserZoomEnabled);
     const trackLabelWidth = 96;
     let trackPlayhead = null;
+    let playheadSelected = false;
+    document.addEventListener('pointerdown', event => {
+      if (event.target.closest('#track-playhead button')) return;
+      playheadSelected = false;
+      trackPlayhead?.classList.remove('selected');
+    });
     const compositionImage = document.getElementById('composition-image');
     const compositionImageFrame = document.getElementById('composition-image-frame');
     const compositionVideo = document.getElementById('composition-video');
@@ -1214,6 +1220,9 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
       if (trackPlayhead) {
         const x = trackLabelWidth + session.playheadSeconds * timelineScale;
         trackPlayhead.style.left = `${x}px`;
+        const nearestTick = Math.round(session.playheadSeconds);
+        const tickHeight = nearestTick % 10 === 0 ? 15 : nearestTick % 5 === 0 ? 10 : 5;
+        trackPlayhead.style.setProperty('--playhead-tick-height', `${tickHeight}px`);
         const handle = trackPlayhead.firstElementChild;
         handle.setAttribute('aria-valuemax', String(compositionDuration));
         handle.setAttribute('aria-valuenow', session.playheadSeconds.toFixed(2));
@@ -1551,6 +1560,8 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
             (event.pointerType === 'touch' && !event.isPrimary)) return;
         if (event.isPrimary) suppressDragForPinch = false;
         event.preventDefault();
+        playheadSelected = true;
+        playhead.classList.add('selected');
         draggingPlayhead = true;
         movedPlayhead = false;
         pointerStartX = event.clientX;
@@ -1574,6 +1585,8 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
       playheadHandle.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
+          playheadSelected = true;
+          playhead.classList.add('selected');
           toggleFrameLock();
           return;
         }
@@ -1582,6 +1595,7 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
         setCompositionTime(session.playheadSeconds + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1));
       });
       playhead.append(playheadHandle);
+      playhead.classList.toggle('selected', playheadSelected);
       trackPlayhead = playhead;
       trackContent.append(playhead);
       syncFrameLockButton();
