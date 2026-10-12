@@ -676,6 +676,27 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
     const timelineToggle = document.getElementById('timeline-toggle');
     const pinPreviewButton = document.getElementById('pin-preview');
     const snapToggle = document.getElementById('snap-toggle');
+    const timelineLockButton = document.getElementById('timeline-lock');
+    const timelineLockKey = 'urlAutofill.timelineLock.v1';
+    let manualTimelineLock = false;
+    let touchTimelineLock = false;
+    try { manualTimelineLock = window.localStorage.getItem(timelineLockKey) === '1'; }
+    catch (error) { /* Keep the timeline unlocked without browser storage. */ }
+    function timelineLocked() { return manualTimelineLock || touchTimelineLock; }
+    function syncTimelineLock() {
+      const locked = timelineLocked();
+      trackList.classList.toggle('timeline-locked', locked);
+      timelineLockButton.setAttribute('aria-pressed', String(locked));
+      timelineLockButton.setAttribute('aria-label', locked ? 'Unlock clip dragging' : 'Lock clip dragging');
+      timelineLockButton.textContent = locked ? 'Locked' : 'Lock';
+    }
+    timelineLockButton.addEventListener('click', () => {
+      manualTimelineLock = !manualTimelineLock;
+      try { window.localStorage.setItem(timelineLockKey, manualTimelineLock ? '1' : '0'); }
+      catch (error) { /* The lock still toggles without browser storage. */ }
+      syncTimelineLock();
+    });
+    syncTimelineLock();
     const compositorStatus = document.getElementById('compositor-status');
     const compositorStatusText = document.getElementById('compositor-status-text');
     const hintToggle = document.getElementById('hint-toggle');
@@ -1281,6 +1302,14 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
       let pendingTouchSeek = null;
       let suppressTouchSeek = false;
       let suppressDragForPinch = false;
+      let activePan = null;
+      function releaseTouchLock(event) {
+        if (event.touches.length < 2) pinch = null;
+        if (event.touches.length === 0 && touchTimelineLock) {
+          touchTimelineLock = false;
+          syncTimelineLock();
+        }
+      }
       function pinchGeometry(touches) {
         const first = touches[0];
         const second = touches[1];
@@ -1289,13 +1318,21 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
           x: (first.clientX + second.clientX) / 2 - trackList.getBoundingClientRect().left };
       }
       function beginPinch(event) {
-        if (browserZoomEnabled || event.touches.length !== 2) return;
-        event.preventDefault();
-        const { distance, x } = pinchGeometry(event.touches);
-        if (!distance) return;
+        const bounds = trackList.getBoundingClientRect();
+        const timelineTouches = Array.from(event.touches).filter(touch =>
+          touch.clientX >= bounds.left && touch.clientX <= bounds.right &&
+          touch.clientY >= bounds.top && touch.clientY <= bounds.bottom);
+        if (timelineTouches.length < 2) return;
+        touchTimelineLock = true;
+        syncTimelineLock();
+        activePan = null;
         suppressTouchSeek = true;
         suppressDragForPinch = true;
         pendingTouchSeek = null;
+        if (browserZoomEnabled || timelineTouches.length !== 2) return;
+        event.preventDefault();
+        const { distance, x } = pinchGeometry(timelineTouches);
+        if (!distance) return;
         pinch = { distance, scale: timelineScale,
           time: Math.max(0, (trackList.scrollLeft + x - trackLabelWidth) / timelineScale) };
       }
@@ -1311,11 +1348,28 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
       const gestureOptions = { passive: false, signal: timelineGestureController.signal };
       trackList.addEventListener('touchstart', beginPinch, gestureOptions);
       trackList.addEventListener('touchmove', movePinch, gestureOptions);
-      trackList.addEventListener('touchend', event => {
-        if (event.touches.length < 2) pinch = null;
-      }, { signal: timelineGestureController.signal });
-      trackList.addEventListener('touchcancel', () => { pinch = null; },
+      document.addEventListener('touchend', releaseTouchLock,
         { signal: timelineGestureController.signal });
+      document.addEventListener('touchcancel', releaseTouchLock,
+        { signal: timelineGestureController.signal });
+      trackList.addEventListener('pointerdown', event => {
+        if (!timelineLocked() || event.button !== 0 || touchTimelineLock ||
+            event.target.closest('button, input')) return;
+        event.preventDefault();
+        trackList.setPointerCapture(event.pointerId);
+        activePan = { id: event.pointerId, x: event.clientX, y: event.clientY,
+          left: trackList.scrollLeft, top: trackList.scrollTop };
+      }, { signal: timelineGestureController.signal });
+      trackList.addEventListener('pointermove', event => {
+        if (!activePan || activePan.id !== event.pointerId || touchTimelineLock) return;
+        trackList.scrollLeft = activePan.left - (event.clientX - activePan.x);
+        trackList.scrollTop = activePan.top - (event.clientY - activePan.y);
+      }, { signal: timelineGestureController.signal });
+      const endPan = event => {
+        if (activePan?.id === event.pointerId) activePan = null;
+      };
+      trackList.addEventListener('pointerup', endPan, { signal: timelineGestureController.signal });
+      trackList.addEventListener('pointercancel', endPan, { signal: timelineGestureController.signal });
       trackList.addEventListener('gesturestart', event => {
         if (!browserZoomEnabled) event.preventDefault();
       }, gestureOptions);
@@ -1323,6 +1377,7 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
         if (!browserZoomEnabled) event.preventDefault();
       }, gestureOptions);
       rulerLane.addEventListener('pointerdown', event => {
+        if (timelineLocked()) return;
         if (event.pointerType === 'touch') {
           pendingTouchSeek = event.pointerId;
           suppressTouchSeek = false;
@@ -1331,6 +1386,7 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
         setCompositionTime((event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       });
       rulerLane.addEventListener('pointerup', event => {
+        if (timelineLocked()) return;
         if (event.pointerId !== pendingTouchSeek) return;
         pendingTouchSeek = null;
         if (!suppressTouchSeek) setCompositionTime(
@@ -1359,7 +1415,8 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
       const seekFromPointer = event => setCompositionTime(
         (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       playheadHandle.addEventListener('pointerdown', event => {
-        if (event.button !== 0) return;
+        if (event.button !== 0 || timelineLocked() ||
+            (event.pointerType === 'touch' && !event.isPrimary)) return;
         if (event.isPrimary) suppressDragForPinch = false;
         event.preventDefault();
         draggingPlayhead = true;
@@ -1531,7 +1588,8 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
           if (pendingClipFocus?.id === id && pendingClipFocus.start === clip.start &&
               pendingClipFocus.track === trackIndex) focusGrip = grip;
           grip.addEventListener('pointerdown', event => {
-            if (event.button !== 0) return;
+            if (event.button !== 0 || timelineLocked() ||
+                (event.pointerType === 'touch' && !event.isPrimary)) return;
             if (event.isPrimary) suppressDragForPinch = false;
             event.preventDefault();
             if (event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -1692,7 +1750,8 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
               void refreshCompositor();
             }
             handle.addEventListener('pointerdown', event => {
-              if (event.button !== 0) return;
+              if (event.button !== 0 || timelineLocked() ||
+                  (event.pointerType === 'touch' && !event.isPrimary)) return;
               if (event.isPrimary) suppressDragForPinch = false;
               event.preventDefault();
               event.stopPropagation();

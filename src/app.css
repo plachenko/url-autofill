@@ -148,6 +148,7 @@
   .clip-trim.right { right: 0; border-radius: 0 6px 6px 0; }
   .clip-trim:hover, .clip-trim:focus-visible { background: #ffd976; }
   #snap-toggle[aria-pressed="true"] { background: #49682c; border-color: #a9db78; }
+  #timeline-lock[aria-pressed="true"] { background: #685327; border-color: #ffd976; }
   .clip-tile button { position: absolute; right: 2px; top: 2px; z-index: 7;
     width: 26px; min-height: 26px !important; padding: 0 !important; }
   .clip-tile .clip-select { left: 12px; right: auto; background: #17314d; }
@@ -219,11 +220,19 @@
   body.render-focus #track-list { display: none; }
   #track-list { flex: 1 1 auto; min-height: 0; overflow: auto;
     scrollbar-color: #7085a1 #10151e; touch-action: pan-x pan-y; }
+  #track-list.timeline-locked { cursor: grab; touch-action: none; }
+  #track-list.timeline-locked:active { cursor: grabbing; }
+  #track-list.timeline-locked .clip-tile,
+  #track-list.timeline-locked #track-playhead button { pointer-events: none; }
   #track-content { padding-bottom: 4px; }
   .track-lane { min-height: 82px; }
-  .clip-tile { min-height: 80px; }
+  .clip-tile { min-height: 80px; container-type: inline-size; contain: paint; }
   .clip-tile img, .clip-tile video, .clip-tile canvas { height: 44px; }
-  .clip-tile strong, .clip-tile small { font-size: 12px; line-height: 16px; }
+  .clip-tile strong, .clip-tile small { min-width: 0; max-width: 100%; font-size: 12px;
+    line-height: 16px; transition: opacity .12s ease; }
+  @container (max-width: 96px) {
+    .clip-tile strong, .clip-tile small { opacity: 0; }
+  }
   #compositor-status { position: absolute; top: max(28px, calc(env(safe-area-inset-top) + 8px));
     left: 50%; z-index: 3; display: flex; align-items: flex-start; gap: 6px;
     width: max-content; max-width: calc(100% - 120px); margin: 0; padding: 4px 6px 4px 10px;
@@ -280,12 +289,16 @@
   .drawer-timeline-actions button { flex: 1 1 150px; }
   body.browser-timeline-zoom #track-list,
   body.browser-timeline-zoom #track-list * { touch-action: auto; }
+  body.browser-timeline-zoom #track-list.timeline-locked { touch-action: none; }
   #drawer details { margin-top: 12px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { :root { --timeline-height: 230px; }
     .buttons { grid-template-columns: repeat(2, 1fr); }
     #compositor { padding-inline: 8px; }
-    #compositor button { font-size: 12px; padding-inline: 5px; }
+    #timeline-controls { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+    #seek-wrap { grid-column: 1 / -1; grid-row: 1; width: 100%; }
+    #compositor button { min-width: 0; font-size: 12px; padding-inline: 4px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #composition-time { display: none; }
   }
 
