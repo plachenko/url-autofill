@@ -1,6 +1,6 @@
 import { compactParams } from "./url-parameters.js";
 import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia } from "./media-store.js";
-import { clearAppStorage } from './app-storage.js';
+import { clearAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
 
   'use strict';
   export function initialize() {
@@ -633,6 +633,47 @@ import { clearAppStorage } from './app-storage.js';
           'Could not clear saved data in this browser.', true);
       }
     });
+    document.getElementById('download-session').addEventListener('click', async () => {
+      try {
+        saveMemory();
+        saveSession(true);
+        await new Promise(resolve => window.setTimeout(resolve, 150));
+        const backup = createSessionBackup(window.localStorage);
+        const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `url-autofill-session-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        message('Session download started.');
+      } catch (error) { message('Could not download this session.', true); }
+    });
+    const restoreSessionFile = document.getElementById('restore-session-file');
+    document.getElementById('restore-session').addEventListener('click', () => restoreSessionFile.click());
+    restoreSessionFile.addEventListener('change', async () => {
+      const file = restoreSessionFile.files?.[0];
+      if (!file) return;
+      let restored = false;
+      try {
+        if (file.size > 32 * 1024 * 1024)
+          throw new Error('This session file is too large to restore.');
+        const backup = JSON.parse(await file.text());
+        if (!window.confirm('Replace all URL Autofill data saved in this browser with this session file?')) return;
+        restoreSessionBackup(window.localStorage, backup);
+        restored = true;
+        clearingSavedData = true;
+        const url = new URL(window.location.href);
+        url.search = '';
+        url.hash = '';
+        window.location.replace(url.href);
+      } catch (error) {
+        message(restored ? 'Session restored. Reload this page to see it.' :
+          `Could not restore session: ${error.message}`, true);
+      } finally { restoreSessionFile.value = ''; }
+    });
     const clipForm = document.getElementById('clip-form');
     const clipIdField = document.getElementById('clip-id');
     const clipFileField = document.getElementById('clip-file');
@@ -727,13 +768,13 @@ import { clearAppStorage } from './app-storage.js';
     catch (error) { /* Keep the hint visible without browser storage. */ }
     function setHintHidden(hidden) {
       hintHidden = hidden;
-      compositorStatus.hidden = hidden;
+      if (compositorStatus) compositorStatus.hidden = hidden;
       hintToggle.textContent = hidden ? 'Show hint' : 'Hide hint';
       try { window.localStorage.setItem(hintVisibilityKey, hidden ? '1' : '0'); }
       catch (error) { /* The hint still toggles without browser storage. */ }
     }
     hintToggle.addEventListener('click', () => setHintHidden(!hintHidden));
-    document.getElementById('compositor-status-close').addEventListener('click', () => setHintHidden(true));
+    document.getElementById('compositor-status-close')?.addEventListener('click', () => setHintHidden(true));
     setHintHidden(hintHidden);
     const compositorKey = 'urlAutofill.compositor.v1';
     const snapStorageKey = 'urlAutofill.snap.v1';
@@ -848,8 +889,8 @@ import { clearAppStorage } from './app-storage.js';
       if (compositionPlaying && !session.lockRenderFrame) stopComposition();
     });
     function compositorMessage(text, error = false) {
-      compositorStatusText.textContent = text;
-      compositorStatus.classList.toggle('error', error);
+      if (compositorStatusText) compositorStatusText.textContent = text;
+      compositorStatus?.classList.toggle('error', error);
     }
     function validTracks(value) {
       return Array.isArray(value) && value.length > 0 && value.length <= 8 &&

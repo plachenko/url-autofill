@@ -41,6 +41,11 @@
     <button id="cancel" type="button">Cancel</button>
   </div>
   <p id="status" role="status" aria-live="polite">Ready.</p>
+  <div class="session-file-actions" aria-label="Session backup">
+    <button id="download-session" type="button">Download session</button>
+    <button id="restore-session" type="button">Restore session</button>
+    <input id="restore-session-file" type="file" accept=".json,application/json" hidden>
+  </div>
   <button id="clear-saved-data" type="button">Clear saved data</button>
   <HelpPanel />
 </aside>
