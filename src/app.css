@@ -308,6 +308,12 @@
   #drawer .buttons { gap: 6px; margin: 14px 0; }
   #drawer .buttons button { min-width: 0; }
   #drawer #clip-library { margin: 16px 0; padding: 12px; }
+  .project-controls { margin-top: 16px; padding: 12px; border: 1px solid #7085a1; border-radius: 8px; }
+  .project-controls label:not(:first-child) { margin-top: 12px; }
+  .project-controls select, .project-controls input { width: 100%; min-height: 42px; padding: 8px;
+    font: inherit; color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 8px; }
+  .project-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .project-actions button { flex: 1 1 0; min-width: 0; }
   .session-filename-label { margin-top: 12px; }
   #session-filename { width: 100%; min-height: 42px; padding: 8px; font: inherit;
     color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 8px; }

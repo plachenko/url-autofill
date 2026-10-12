@@ -1,6 +1,7 @@
 import { compactParams } from "./url-parameters.js";
 import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia } from "./media-store.js";
-import { clearAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
+import { clearAllAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
+import { createProject, deleteProject, listProjects, renameProject, switchProject } from './project-store.js';
 
   'use strict';
   export function initialize() {
@@ -620,9 +621,9 @@ import { clearAppStorage, createSessionBackup, restoreSessionBackup } from './ap
       status.classList.toggle('error', error);
     }
     document.getElementById('clear-saved-data').addEventListener('click', () => {
-      if (!window.confirm('Delete all URL Autofill clips, tracks, text, memory, and preferences saved in this browser? This cannot be undone.')) return;
+      if (!window.confirm('Delete all URL Autofill projects, clips, tracks, text, memory, and preferences saved in this browser? This cannot be undone.')) return;
       try {
-        clearAppStorage(window.localStorage);
+        clearAllAppStorage(window.localStorage);
         clearingSavedData = true;
         const url = new URL(window.location.href);
         url.search = '';
@@ -632,6 +633,67 @@ import { clearAppStorage, createSessionBackup, restoreSessionBackup } from './ap
         message(clearingSavedData ? 'Saved data was cleared. Reload this page to reset the view.' :
           'Could not clear saved data in this browser.', true);
       }
+    });
+    const projectSelect = document.getElementById('project-select');
+    const projectNameField = document.getElementById('project-name');
+    function showProjects() {
+      const { activeId, projects } = listProjects(window.localStorage);
+      projectSelect.replaceChildren(...projects.map(project => new Option(project.name, project.id)));
+      projectSelect.value = activeId;
+      projectNameField.value = projects.find(project => project.id === activeId).name;
+      document.getElementById('delete-project').disabled = projects.length === 1;
+      return { activeId, projects };
+    }
+    function loadActiveProject() {
+      clearingSavedData = true;
+      const url = new URL(window.location.href);
+      url.search = '';
+      url.hash = '';
+      window.location.replace(url.href);
+    }
+    async function saveCurrentProject() {
+      saveMemory();
+      saveSession(true);
+      await new Promise(resolve => window.setTimeout(resolve, 150));
+    }
+    try { showProjects(); }
+    catch (error) { message(`Could not load projects: ${error.message}`, true); }
+    projectSelect.addEventListener('change', async () => {
+      try {
+        await saveCurrentProject();
+        switchProject(window.localStorage, projectSelect.value);
+        loadActiveProject();
+      } catch (error) {
+        try { showProjects(); } catch { /* Keep the error visible. */ }
+        message(`Could not switch projects: ${error.message}`, true);
+      }
+    });
+    document.getElementById('new-project').addEventListener('click', async () => {
+      try {
+        const count = listProjects(window.localStorage).projects.length;
+        const name = window.prompt('Name for new project', `Project ${count + 1}`);
+        if (name === null) return;
+        await saveCurrentProject();
+        createProject(window.localStorage, name);
+        loadActiveProject();
+      } catch (error) { message(`Could not create project: ${error.message}`, true); }
+    });
+    document.getElementById('rename-project').addEventListener('click', () => {
+      try {
+        renameProject(window.localStorage, listProjects(window.localStorage).activeId,
+          projectNameField.value);
+        showProjects();
+        message('Project renamed.');
+      } catch (error) { message(`Could not rename project: ${error.message}`, true); }
+    });
+    document.getElementById('delete-project').addEventListener('click', () => {
+      try {
+        const { activeId, projects } = listProjects(window.localStorage);
+        const name = projects.find(project => project.id === activeId).name;
+        if (!window.confirm(`Delete project "${name}" and its saved data? This cannot be undone.`)) return;
+        deleteProject(window.localStorage, activeId);
+        loadActiveProject();
+      } catch (error) { message(`Could not delete project: ${error.message}`, true); }
     });
     document.getElementById('download-session').addEventListener('click', async () => {
       try {
@@ -665,7 +727,7 @@ import { clearAppStorage, createSessionBackup, restoreSessionBackup } from './ap
         if (file.size > 32 * 1024 * 1024)
           throw new Error('This session file is too large to restore.');
         const backup = JSON.parse(await file.text());
-        if (!window.confirm('Replace all URL Autofill data saved in this browser with this session file?')) return;
+        if (!window.confirm('Replace the current project with this session file?')) return;
         restoreSessionBackup(window.localStorage, backup);
         restored = true;
         clearingSavedData = true;

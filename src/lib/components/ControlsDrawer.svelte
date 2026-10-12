@@ -41,6 +41,17 @@
     <button id="cancel" type="button">Cancel</button>
   </div>
   <p id="status" role="status" aria-live="polite">Ready.</p>
+  <section class="project-controls" aria-label="Projects">
+    <label for="project-select">Project</label>
+    <select id="project-select"></select>
+    <label for="project-name">Rename current project</label>
+    <input id="project-name" type="text" maxlength="80" autocomplete="off" placeholder="Project name">
+    <div class="project-actions">
+      <button id="new-project" type="button">New</button>
+      <button id="rename-project" type="button">Rename</button>
+      <button id="delete-project" type="button">Delete</button>
+    </div>
+  </section>
   <label class="session-filename-label" for="session-filename">Session filename</label>
   <input id="session-filename" type="text" maxlength="150" autocomplete="off" spellcheck="false" placeholder="Default: url-autofill-session-YYYY-MM-DD.json">
   <div class="session-file-actions" aria-label="Session backup">

@@ -1,6 +1,7 @@
 const sessionFormat = 'url-autofill-session';
 const sessionVersion = 1;
-const isAppKey = key => key?.startsWith('urlAutofill.') ||
+export const projectsStorageKey = 'urlAutofill.projects.v1';
+const isAppKey = key => (key?.startsWith('urlAutofill.') && key !== projectsStorageKey) ||
   key?.startsWith('paneforge:urlAutofill.');
 
 function appStorageKeys(storage) {
@@ -19,6 +20,13 @@ export function clearAppStorage(storage) {
   const keys = appStorageKeys(storage);
   for (const key of keys) storage.removeItem(key);
   return keys.length;
+}
+
+export function clearAllAppStorage(storage) {
+  const count = clearAppStorage(storage);
+  const hasProjects = storage.getItem(projectsStorageKey) !== null;
+  storage.removeItem(projectsStorageKey);
+  return count + Number(hasProjects);
 }
 
 export function createSessionBackup(storage) {

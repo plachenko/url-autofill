@@ -44,3 +44,5 @@ Play completed clips in order with `?l=clip1,clip2`, or enter `timeline:clip1,cl
 Chunks are stored in browser `localStorage` for this site's origin. Browser quotas are small, usually only a few megabytes, so this is suited to short clips and images rather than large videos. Private browsing or cleared site data removes the timeline.
 
 Use **Download session** in the menu to save a JSON backup of this app's text, clips, tracks, pane sizes, and preferences. Enter a **Session filename** first to name the download; leave it blank for a dated filename. The `.json` extension is added if needed. **Restore session** imports that file and replaces the app's current saved data after confirmation. Other data stored on the same origin is left alone. Large clips make the backup file large too.
+
+Use **Projects** in the menu to create, switch, rename, or delete browser-local workspaces. Your existing session becomes Project 1. Each project keeps its own clips, tracks, text, layout, and preferences. Switching saves the current project before loading the next one. A session file backs up the active project; **Clear saved data** removes all projects.
