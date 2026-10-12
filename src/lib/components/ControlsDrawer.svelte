@@ -9,7 +9,6 @@
   <div class="drawer-view-actions">
     <button id="drawer-fullscreen" type="button" hidden>Enter fullscreen</button>
     <button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
-    <button id="hint-toggle" type="button">Hide hint</button>
   </div>
   <div class="drawer-view-actions">
     <button id="tesla-fullscreen" type="button">Tesla Theater fullscreen</button>

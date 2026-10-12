@@ -831,23 +831,6 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
       syncTimelineLock();
     });
     syncTimelineLock();
-    const compositorStatus = document.getElementById('compositor-status');
-    const compositorStatusText = document.getElementById('compositor-status-text');
-    const hintToggle = document.getElementById('hint-toggle');
-    const hintVisibilityKey = 'urlAutofill.hideHint.v1';
-    let hintHidden = false;
-    try { hintHidden = window.localStorage.getItem(hintVisibilityKey) === '1'; }
-    catch (error) { /* Keep the hint visible without browser storage. */ }
-    function setHintHidden(hidden) {
-      hintHidden = hidden;
-      if (compositorStatus) compositorStatus.hidden = hidden;
-      hintToggle.textContent = hidden ? 'Show hint' : 'Hide hint';
-      try { window.localStorage.setItem(hintVisibilityKey, hidden ? '1' : '0'); }
-      catch (error) { /* The hint still toggles without browser storage. */ }
-    }
-    hintToggle.addEventListener('click', () => setHintHidden(!hintHidden));
-    document.getElementById('compositor-status-close')?.addEventListener('click', () => setHintHidden(true));
-    setHintHidden(hintHidden);
     const compositorKey = 'urlAutofill.compositor.v1';
     const snapStorageKey = 'urlAutofill.snap.v1';
     let snapEnabled = true;
@@ -961,8 +944,7 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
       if (compositionPlaying && !session.lockRenderFrame) stopComposition();
     });
     function compositorMessage(text, error = false) {
-      if (compositorStatusText) compositorStatusText.textContent = text;
-      compositorStatus?.classList.toggle('error', error);
+      message(text, error);
     }
     function validTracks(value) {
       return Array.isArray(value) && value.length > 0 && value.length <= 8 &&

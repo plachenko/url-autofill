@@ -165,8 +165,6 @@
     width: 26px; min-height: 26px !important; padding: 0 !important; }
   .clip-tile .clip-select { left: 12px; right: auto; background: #17314d; }
   .clip-tile .clip-select[aria-pressed="true"] { background: #70d8ff; color: #10151e; }
-  #compositor-status { color: #b8c8e0; overflow-wrap: anywhere; }
-  #compositor-status.error { color: #ffb4b4; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
   body { padding: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
   #stage { flex: 1 1 auto; width: 100%; max-width: none; min-height: 0;
@@ -262,15 +260,6 @@
   @container (max-width: 96px) {
     .clip-tile strong, .clip-tile small { opacity: 0; }
   }
-  #compositor-status { position: absolute; top: max(28px, calc(env(safe-area-inset-top) + 8px));
-    left: 50%; z-index: 3; display: flex; align-items: flex-start; gap: 6px;
-    width: max-content; max-width: calc(100% - 120px); margin: 0; padding: 4px 6px 4px 10px;
-    transform: translateX(-50%); text-align: center; border-radius: 6px;
-    background: #10151ec9; font-size: 12px; }
-  #compositor-status-close { flex: 0 0 28px; width: 28px; min-height: 28px; padding: 0;
-    border: 0; border-radius: 4px; background: transparent; color: inherit;
-    font-size: 20px; line-height: 20px; }
-  body.minimal #compositor-status { display: none; }
   #screenplay-workspace { display: none; position: absolute; inset: 0; padding: 68px 20px 20px;
     background: #242424; overflow: auto; }
   #screenplay-workspace label { max-width: 780px; margin: 0 auto 12px; color: #f3f6fc; }
@@ -280,7 +269,6 @@
     box-shadow: 0 12px 36px #0006; }
   body.screenplay-mode #screenplay-workspace { display: block; }
   body.screenplay-mode #render-surface, body.screenplay-mode #compositor,
-  body.screenplay-mode #compositor-status { display: none; }
   body.screenplay-mode #minimal-toggle { display: none; }
   #menu-toggle, #page-fullscreen { position: fixed; top: max(12px, env(safe-area-inset-top));
     bottom: auto; z-index: 1001; width: 44px; min-height: 44px; padding: 4px;
