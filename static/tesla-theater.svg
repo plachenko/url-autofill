@@ -1,48 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
   <title id="title">Tesla Theater</title>
-  <desc id="description">A white Tesla T on a red rounded video button, framed by open theater curtains.</desc>
+  <desc id="description">A white Tesla T on a red rounded video button behind two symmetrical open curtain silhouettes.</desc>
   <defs>
-    <linearGradient id="leftCurtain" x1="0" x2="1">
-      <stop offset="0" stop-color="#5c0718"/>
-      <stop offset=".25" stop-color="#b9182c"/>
-      <stop offset=".45" stop-color="#710919"/>
-      <stop offset=".72" stop-color="#d2293c"/>
-      <stop offset="1" stop-color="#650819"/>
-    </linearGradient>
-    <linearGradient id="rightCurtain" x1="1" x2="0">
-      <stop offset="0" stop-color="#5c0718"/>
-      <stop offset=".25" stop-color="#b9182c"/>
-      <stop offset=".45" stop-color="#710919"/>
-      <stop offset=".72" stop-color="#d2293c"/>
-      <stop offset="1" stop-color="#650819"/>
-    </linearGradient>
-    <linearGradient id="valance" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#560716"/>
-      <stop offset=".55" stop-color="#b51b30"/>
-      <stop offset="1" stop-color="#790c20"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-25%" width="140%" height="155%">
-      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#1a0208" flood-opacity=".4"/>
+    <filter id="buttonShadow" x="-20%" y="-25%" width="140%" height="155%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#170208" flood-opacity=".35"/>
     </filter>
+    <path id="curtain" d="M0 0h438c-29 68-66 129-105 188-43 64-82 128-116 202-48 103-87 215-122 330H0z"/>
   </defs>
 
-  <!-- The video button sits behind the curtain opening. -->
-  <rect x="196" y="148" width="808" height="474" rx="112" fill="#ff0033" filter="url(#shadow)"/>
+  <rect x="196" y="148" width="808" height="474" rx="112" fill="#ff0033" filter="url(#buttonShadow)"/>
   <path fill="#fff" d="M462 297c72-43 204-43 276 0l-17 27c-65-33-177-33-242 0z"/>
   <path fill="#fff" d="M545 333c33-18 77-18 110 0l-13 27c-17-10-28-13-42-13s-25 3-42 13z"/>
   <path fill="#fff" d="M577 357h46l-7 125c-2 25-8 43-16 58-8-15-14-33-16-58z"/>
 
-  <!-- Open velvet panels overlap the red button at its edges. -->
-  <path fill="url(#leftCurtain)" filter="url(#shadow)"
-    d="M0 0h331c-26 78-57 133-87 181-29 48-49 92-45 139 3 45 32 92 52 139 32 76 42 167 42 261H0z"/>
-  <path fill="url(#rightCurtain)" filter="url(#shadow)"
-    d="M1200 0H869c26 78 57 133 87 181 29 48 49 92 45 139-3 45-32 92-52 139-32 76-42 167-42 261h293z"/>
-  <path d="M119 0c-38 117-53 254-43 392 9 123 38 235 54 328M224 0c-55 144-71 272-55 377 12 82 49 208 68 343"
-    fill="none" stroke="#410511" stroke-width="18" opacity=".42"/>
-  <path d="M1081 0c38 117 53 254 43 392-9 123-38 235-54 328M976 0c55 144 71 272 55 377-12 82-49 208-68 343"
-    fill="none" stroke="#410511" stroke-width="18" opacity=".42"/>
-  <path d="M0 0h1200v77c-89 16-162 23-241 14-81-9-158-23-239-10-45 7-82 27-120 27s-75-20-120-27c-81-13-158 1-239 10C162 100 89 93 0 77z"
-    fill="url(#valance)" filter="url(#shadow)"/>
-  <path d="M0 79c89 16 162 23 241 14 81-9 158-23 239-10 45 7 82 27 120 27s75-20 120-27c81-13 158 1 239 10 79 9 152 2 241-14"
-    fill="none" stroke="#ed9d77" stroke-width="5" opacity=".65"/>
+  <use href="#curtain" fill="#721322"/>
+  <use href="#curtain" transform="translate(1200 0) scale(-1 1)" fill="#721322"/>
 </svg>
