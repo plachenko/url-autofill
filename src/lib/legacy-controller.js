@@ -1,424 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Autofill · v0.7.0</title>
-<style>
-  :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 24px; }
-  #usage-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
-    height: 16px; background: #10151eee; color: #9cabc0; font: 10px/13px system-ui, sans-serif;
-    text-align: right; padding-right: 8px; pointer-events: none; }
-  #usage-fill { position: absolute; bottom: 0; left: 0; height: 3px; width: 0;
-    background: #6989ac; }
-  main { max-width: 1000px; margin: auto; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  h1 { font-size: clamp(28px, 5vw, 42px); margin: 0 0 24px; }
-  .version { color: #b8c8e0; white-space: nowrap; }
-  .memory-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
-    padding: 10px 12px; margin-bottom: 20px; background: #182130; border-radius: 8px;
-    font-size: 14px; overflow-wrap: anywhere; }
-  .memory-bar button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
-  label { display: block; font-weight: 700; margin-bottom: 8px; }
-  textarea { width: 100%; min-height: 150px; padding: 18px; font: inherit; font-size: 28px;
-    color: #fff; background: #1b2534; border: 2px solid #7085a1; border-radius: 12px; resize: vertical; }
-  label[for="reply"] { margin-top: 16px; }
-  .buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
-  button { min-height: 68px; padding: 14px; border: 2px solid #7799cb; border-radius: 12px;
-    font: inherit; font-weight: 700; color: #fff; background: #284e82; cursor: pointer; touch-action: manipulation; }
-  button:active { background: #396eaf; }
-  :focus-visible { outline: 4px solid #ffd976; outline-offset: 4px; }
-  #waiting { padding: 16px; background: #29354a; border-radius: 12px; margin-bottom: 16px; }
-  #cancel { margin: 12px 0 0; background: #75393f; width: 100%; }
-  #status { min-height: 30px; color: #c3dbff; overflow-wrap: anywhere; }
-  #status.error { color: #ffb4b4; }
-  #output { min-height: 130px; padding: 20px; background: #182130; border-radius: 12px;
-    font-size: clamp(36px, 7vw, 72px); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .rendered-reply { margin-top: 20px; padding-top: 16px; border-top: 2px solid #7085a1;
-    color: #b9e4d0; font-size: 0.7em; }
-  details { margin-top: 28px; color: #b8c8e0; font-size: 17px; }
-  summary { cursor: pointer; padding: 14px 0; }
-  code { overflow-wrap: anywhere; color: #e5edff; }
-  li { margin-bottom: 8px; }
-  a { color: #a9ceff; }
-  #page-fullscreen { position: fixed; right: max(16px, env(safe-area-inset-right));
-    bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10001;
-    width: 52px; min-height: 52px; padding: 8px; font-size: 26px;
-    color: #b8c8d8; background: #182130e6; border: 1px solid #7085a1; }
-  #minimal-toggle { position: fixed; left: max(16px, env(safe-area-inset-left));
-    bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10001;
-    min-height: 52px; padding: 8px 14px; font-size: 16px;
-    color: #b8c8d8; background: #182130e6; border: 1px solid #7085a1; }
-  #minimal-display { display: none; }
-  body.minimal main > :not(#minimal-display) { display: none !important; }
-  body.minimal #minimal-display { display: block; }
-  .plain-text { font-size: clamp(28px, 5vw, 52px); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .plain-text:empty { display: none; }
-  #display-reply { color: #b8c8d8; font-weight: 400; }
-  #display-text:not(:empty) + #display-reply:not(:empty) { margin-top: 24px; }
-  .rendered-media { max-width: 100%; max-height: 70vh; }
-  .static-image { display: inline-flex; flex-direction: column; max-width: 100%;
-    background: #182130; }
-  .animated-image { display: inline-flex; flex-direction: column; max-width: 100%;
-    white-space: normal; background: #182130; }
-  .static-image:fullscreen, .animated-image:fullscreen { width: 100%; height: 100%; max-width: none;
-    align-items: center; justify-content: center; }
-  .static-image:fullscreen img, .animated-image:fullscreen canvas { flex: 1 1 auto;
-    width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: none; max-height: none;
-    object-fit: contain; }
-  .image-controls { display: flex; align-items: center; gap: 8px; padding: 6px;
-    width: 100%; font: 14px/1.5 system-ui, sans-serif; }
-  .image-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
-  .image-controls input { flex: 1; min-width: 40px; }
-  .timeline-player { display: inline-flex; flex-direction: column; max-width: 100%;
-    background: #182130; white-space: normal; }
-  .timeline-player video, .timeline-player img { max-width: 100%; max-height: 70vh; }
-  .timeline-player:fullscreen { width: 100%; height: 100%; max-width: none;
-    align-items: center; justify-content: center; }
-  .timeline-player:fullscreen video, .timeline-player:fullscreen img { flex: 1 1 auto;
-    width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: none; max-height: none;
-    object-fit: contain; }
-  .timeline-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    width: 100%; padding: 6px; font: 14px/1.5 system-ui, sans-serif; }
-  .timeline-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
-  .timeline-controls input { flex: 1; min-width: 80px; }
-  #clip-library { margin: 18px 0 24px; padding: 16px; background: #182130;
-    border: 1px solid #7085a1; border-radius: 12px; font-size: 16px; }
-  #clip-library h2 { margin: 0 0 12px; font-size: 22px; }
-  #clip-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
-  #clip-form label { flex: 1 1 160px; margin: 0; font-size: 14px; }
-  #clip-form input { display: block; width: 100%; min-height: 42px; margin-top: 4px;
-    padding: 6px 8px; color: #fff; background: #10151e; border: 1px solid #7085a1;
-    border-radius: 6px; font: 16px system-ui, sans-serif; }
-  #clip-library button { min-height: 42px; padding: 7px 12px; font-size: 15px; border-radius: 6px; }
-  #clip-library p { margin: 10px 0; color: #b8c8e0; }
-  #clip-status.error { color: #ffb4b4; }
-  #clip-list { display: grid; gap: 8px; margin: 12px 0; }
-  .clip-row { display: flex; align-items: center; gap: 10px; padding: 8px;
-    border: 1px solid #44566f; border-radius: 8px; overflow-wrap: anywhere; }
-  .clip-row label { flex: 1; margin: 0; font-size: 15px; font-weight: 400; }
-  .clip-row input { width: 20px; height: 20px; vertical-align: middle; }
-  .clip-row button { flex: 0 0 auto; background: #75393f; }
-  #compositor { min-width: 0; max-width: 100%; margin-top: 24px; padding: 16px; background: #182130;
-    border: 1px solid #7085a1; border-radius: 12px; font-size: 16px; }
-  #compositor h2 { margin: 0 0 12px; font-size: 22px; }
-  .compositor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-  #compositor button { min-height: 42px; padding: 7px 12px; font-size: 15px; border-radius: 6px; }
-  #composition-preview { display: grid; place-items: center; min-height: 180px;
-    background: #10151e; border-radius: 8px; overflow: hidden; }
-  #composition-preview img, #composition-preview video, #composition-preview canvas { max-width: 100%; max-height: 55vh; }
-  #composition-preview [hidden] { display: none; }
-  #composition-scrubber { width: 100%; margin: 12px 0 4px; }
-  #track-list { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; }
-  #track-content { position: relative; min-width: 100%; display: grid; gap: 10px; }
-  .track-row { display: flex; width: 100%; min-width: 0; align-items: stretch; gap: 8px; }
-  .track-heading { width: 88px; flex: 0 0 88px; font-weight: 700; padding: 12px 0; }
-  .timeline-zoom { position: sticky; left: 0; z-index: 9; display: flex;
-    align-items: center; justify-content: center; gap: 2px; padding: 2px 0;
-    background: #182130; user-select: none; -webkit-user-select: none; }
-  .timeline-zoom button { width: 26px; min-height: 26px !important; padding: 0 !important;
-    font-size: 18px !important; line-height: 1; }
-  .timeline-zoom button:disabled { opacity: .4; cursor: default; }
-  .timeline-zoom span { min-width: 26px; font-size: 11px; text-align: center; }
-  .track-lane { position: relative; flex: 1 0 auto; min-width: 200px; min-height: 108px;
-    background: #10151e; border: 1px dashed #7085a1; border-radius: 8px; }
-  .track-ruler-lane { position: relative; flex: 1 0 auto; min-height: 32px;
-    background: #10151e; border-bottom: 1px solid #7085a1; cursor: crosshair; touch-action: pan-x;
-    user-select: none; -webkit-user-select: none; }
-  .track-ruler-tick { position: absolute; top: 4px; bottom: 0; padding-left: 4px;
-    border-left: 1px solid #7085a1; color: #b8c8e0; font-size: 12px; white-space: nowrap;
-    pointer-events: none; }
-  #track-playhead { position: absolute; top: 0; bottom: 0; width: 2px;
-    background: #ffd976; box-shadow: 0 0 5px #000; pointer-events: none; z-index: 4; }
-  #track-playhead button { position: absolute; top: 0; left: -12px; width: 26px;
-    min-height: 30px; padding: 0; border-radius: 4px; color: #10151e;
-    background: #ffd976; border-color: #ffd976; cursor: ew-resize;
-    touch-action: none; pointer-events: auto; }
-  #track-playhead.locked button { box-shadow: 0 0 0 2px #e74848; }
-  #render-frame { position: absolute; top: 0; bottom: 0; width: 3px; z-index: 6;
-    background: #ff4646; box-shadow: 0 0 0 1px #10151e, 0 0 8px #ff4646; pointer-events: none; }
-  .clip-tile { position: absolute; top: 0; min-height: 106px; overflow: hidden;
-    background: #284e82; border: 1px solid #7799cb; border-radius: 7px; }
-  .clip-tile.under-playhead::after { content: ''; position: absolute; inset: 0; z-index: 8;
-    border: 3px solid #ffd976; border-radius: 6px; pointer-events: none; }
-  .clip-tile.selected { border-color: #70d8ff; box-shadow: 0 0 0 2px #70d8ff; }
-  .clip-tile.dragging { opacity: 1; z-index: 5; box-shadow: 0 0 0 2px #ffd976; }
-  .clip-drag-preview { position: fixed; z-index: 10002; pointer-events: none;
-    opacity: .3; box-shadow: 0 12px 24px #0009; }
-  .clip-tile img, .clip-tile video, .clip-tile canvas { display: block; width: 100%; height: 62px;
-    object-fit: cover; background: #10151e; }
-  .clip-tile strong, .clip-tile small { display: block; padding: 0 5px; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; }
-  .clip-grip { position: absolute; inset: 0; cursor: grab; touch-action: none; }
-  .clip-trim { position: absolute; top: 0; bottom: 0; width: 11px; z-index: 4;
-    background: #ffd97699; border: 1px solid #10151e; cursor: ew-resize; touch-action: none; }
-  .clip-trim.left { left: 0; border-radius: 6px 0 0 6px; }
-  .clip-trim.right { right: 0; border-radius: 0 6px 6px 0; }
-  .clip-trim:hover, .clip-trim:focus-visible { background: #ffd976; }
-  #snap-toggle[aria-pressed="true"] { background: #49682c; border-color: #a9db78; }
-  .clip-tile button { position: absolute; right: 2px; top: 2px; z-index: 7;
-    width: 26px; min-height: 26px !important; padding: 0 !important; }
-  .clip-tile .clip-select { left: 12px; right: auto; background: #17314d; }
-  .clip-tile .clip-select[aria-pressed="true"] { background: #70d8ff; color: #10151e; }
-  #compositor-status { color: #b8c8e0; overflow-wrap: anywhere; }
-  #compositor-status.error { color: #ffb4b4; }
-  .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
-  body { padding: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
-  #stage { flex: 1 1 auto; width: 100%; max-width: none; min-height: 0;
-    position: relative; overflow: hidden; background: #10151e; }
-  #render-surface { position: absolute; inset: 0; overflow: hidden; }
-  body.preview-pinned #render-surface { inset: auto; left: 50%; top: 50%;
-    width: var(--pinned-width); height: var(--pinned-height);
-    transform: translate(-50%, -50%) scale(var(--pinned-scale)); }
-  #output, #composition-preview, #minimal-display { position: absolute; inset: 0; width: 100%; height: 100%;
-    min-height: 0; padding: 0; border: 0; border-radius: 0; overflow: auto; }
-  #output { display: flex; align-items: center; justify-content: center; flex-direction: column;
-    background: #10151e; text-align: center; }
-  #output > div:first-child { display: flex; align-items: center; justify-content: center;
-    flex: 1 1 auto; min-height: 0; width: 100%; overflow: auto; }
-  #output .rendered-reply { flex: 0 1 auto; max-height: 30%; width: 100%; margin: 0;
-    padding: 8px 16px; overflow: auto; }
-  #output:empty::before { content: 'Render preview'; font-size: 18px; color: #9cabc0; }
-  #composition-preview { display: none; place-items: center; grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr); background: #10151e; }
-  body.has-composition #composition-preview { display: grid; }
-  body.has-composition #output { display: none; }
-  #composition-preview img, #composition-preview video, #composition-preview canvas { width: 100%; height: 100%; max-width: none;
-    max-height: none; min-width: 0; min-height: 0; grid-area: 1 / 1; object-fit: contain; }
-  #composition-empty { grid-area: 1 / 1; }
-  #output .rendered-media, #output .timeline-player video, #output .timeline-player img {
-    width: 100%; max-width: none; max-height: none; object-fit: contain; }
-  #output .static-image, #output .animated-image, #output .timeline-player {
-    width: 100%; height: 100%; max-width: none; min-height: 0; justify-content: center; }
-  #output .static-image img, #output .animated-image canvas, #output .timeline-player video,
-  #output .timeline-player img { flex: 1 1 auto; min-height: 0; height: 100%; object-fit: contain; }
-  #minimal-display { display: none; padding: 64px 24px 24px; text-align: center; }
-  body.minimal #minimal-display { display: flex; flex-direction: column; align-items: center;
-    justify-content: center; }
-  body.minimal #stage { flex: 1 1 auto; }
-  body.minimal #compositor { display: none; }
-  #compositor { position: relative; z-index: 20; flex: 0 0 var(--timeline-height, 244px); width: 100%;
-    min-height: 0; margin: 0; padding: 8px 12px max(8px, env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; overflow: hidden; border-radius: 0; border-width: 1px 0 0; }
-  #compositor h2 { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
-    clip: rect(0, 0, 0, 0); white-space: nowrap; }
-  #timeline-controls { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
-    flex: 0 0 auto; }
-  #seek-wrap { position: relative; display: flex; align-items: center; flex: 1 1 auto;
-    min-width: 0; height: 22px; }
-  #composition-scrubber { appearance: none; width: 100%; min-width: 0; height: 10px;
-    margin: 0; border-radius: 5px; cursor: pointer;
-    background: linear-gradient(to right, #ffd976 var(--progress, 0%), #44566f var(--progress, 0%)); }
-  #compact-render-frame { position: absolute; top: 1px; bottom: 1px; left: var(--frame-progress, 0%);
-    width: 3px; z-index: 2; background: #ff4646; box-shadow: 0 0 5px #ff4646;
-    pointer-events: none; }
-  #composition-scrubber::-webkit-slider-thumb { appearance: none; width: 13px; height: 20px;
-    border: 2px solid #10151e; border-radius: 4px; background: #ffd976; }
-  #composition-scrubber::-moz-range-thumb { width: 13px; height: 20px;
-    border: 2px solid #10151e; border-radius: 4px; background: #ffd976; }
-  #composition-time { flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
-  .compositor-actions { margin: 0; display: contents; }
-  #compositor button { min-height: 32px; padding: 3px 8px; font-size: 13px; }
-  #timeline-toggle, #pin-preview { white-space: nowrap; }
-  body.render-focus #compositor { flex-basis: calc(44px + env(safe-area-inset-bottom));
-    padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom));
-    opacity: .3; transition: opacity .15s ease; }
-  body.render-focus #compositor:hover, body.render-focus #compositor:focus-within { opacity: 1; }
-  body.render-focus #track-list { display: none; }
-  #track-list { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-color: #7085a1 #10151e; }
-  #track-content { padding-bottom: 4px; }
-  .track-lane { min-height: 90px; }
-  .clip-tile { min-height: 88px; }
-  #compositor-status { position: absolute; top: max(84px, calc(env(safe-area-inset-top) + 64px));
-    left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 32px);
-    margin: 0; padding: 4px 10px; transform: translateX(-50%); text-align: center;
-    border-radius: 6px; background: #10151ec9; font-size: 12px; pointer-events: none; }
-  body.minimal #compositor-status { display: none; }
-  #menu-toggle, #page-fullscreen { position: fixed; top: max(24px, env(safe-area-inset-top));
-    bottom: auto; z-index: 1001; width: 48px; min-height: 48px; padding: 4px;
-    border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
-    font-size: 24px; }
-  #menu-toggle { left: max(12px, env(safe-area-inset-left)); }
-  #page-fullscreen { right: max(12px, env(safe-area-inset-right)); }
-  #fullscreen-restore { position: fixed; top: max(78px, calc(env(safe-area-inset-top) + 54px));
-    right: max(12px, env(safe-area-inset-right)); z-index: 1001; min-height: 40px;
-    padding: 6px 10px; font-size: 14px; background: #284e82e8; }
-  #drawer-backdrop { position: fixed; inset: 0; z-index: 1002; background: #0009; }
-  #drawer { position: fixed; inset: 0 auto 0 0; z-index: 1003; width: min(440px, 100vw);
-    padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
-    overflow-y: auto; overscroll-behavior: contain; background: #182130; box-shadow: 12px 0 32px #0009;
-    font-size: 16px; }
-  .drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 14px; font-size: 20px; }
-  #drawer button { min-height: 40px; padding: 6px 10px; font-size: 15px; }
-  #menu-close { width: 42px; }
-  .drawer-view-actions { display: flex; gap: 8px; margin-bottom: 20px; }
-  .drawer-view-actions button { flex: 1; }
-  #drawer h1 { font-size: 20px; margin: 0 0 12px; }
-  #drawer .memory-bar { margin-bottom: 16px; }
-  #drawer textarea { min-height: 110px; padding: 10px; font-size: 18px; }
-  #drawer .buttons { gap: 6px; margin: 14px 0; }
-  #drawer .buttons button { min-width: 0; }
-  #drawer #clip-library { margin: 16px 0; padding: 12px; }
-  .drawer-timeline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
-  .drawer-timeline-actions button { flex: 1 1 150px; }
-  #drawer details { margin-top: 12px; }
-  [hidden] { display: none !important; }
-  @media (max-width: 600px) { :root { --timeline-height: 230px; }
-    .buttons { grid-template-columns: repeat(2, 1fr); }
-    #compositor { padding-inline: 8px; }
-    #compositor button { font-size: 12px; padding-inline: 5px; }
-    #composition-time { display: none; }
-  }
-</style>
-</head>
-<body>
-<div id="usage-bar" aria-label="Cursor usage"><span id="usage-text">usage unavailable</span><div id="usage-fill"></div></div>
-<button id="menu-toggle" type="button" aria-label="Open menu" aria-controls="drawer" aria-expanded="false">☰</button>
-<button id="page-fullscreen" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" aria-pressed="false" hidden>⛶</button>
-<button id="fullscreen-restore" type="button" hidden>Restore fullscreen</button>
-<div id="drawer-backdrop" hidden></div>
-<aside id="drawer" aria-label="Controls and help" hidden>
-  <div class="drawer-heading"><strong>URL Autofill</strong><button id="menu-close" type="button" aria-label="Close menu">✕</button></div>
-  <div class="drawer-view-actions">
-    <button id="drawer-fullscreen" type="button" hidden>Enter fullscreen</button>
-    <button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
-  </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.7.0</span></header>
-  <div class="memory-bar" aria-label="Persistent memory">
-    <span>Memory: <span id="memory-value">—</span></span>
-    <span>Clip ID: <span id="clip-value">—</span></span>
-    <span>Last action: <span id="last-action">—</span></span>
-    <span>Last updated: <time id="last-updated">—</time></span>
-    <button id="clear-memory" type="button">Clear memory</button>
-  </div>
-  <label for="text">You said</label>
-  <textarea id="text" placeholder="Your URL can fill this for you"></textarea>
-  <section id="clip-library" aria-labelledby="clip-library-title">
-    <h2 id="clip-library-title">Saved clips</h2>
-    <form id="clip-form">
-      <label for="clip-id">Clip ID<input id="clip-id" type="text" maxlength="64" pattern="[A-Za-z0-9_-]+" required placeholder="clip1"></label>
-      <label for="clip-file">Image or video<input id="clip-file" type="file" accept="image/*,video/*" required></label>
-      <label for="clip-seconds">Image seconds<input id="clip-seconds" type="number" min="0.1" max="3600" step="0.1" value="3"></label>
-      <button type="submit">Save clip</button>
-    </form>
-    <button id="save-text-clip" type="button">Save data URI</button>
-    <p id="clip-status" role="status" aria-live="polite"></p>
-    <p>Clips stay in this browser. Large videos may exceed browser storage.</p>
-    <div id="clip-list" aria-label="Stored clips"></div>
-  </section>
-  <div class="drawer-timeline-actions" aria-label="Timeline actions">
-    <button id="add-track" type="button">Add track</button>
-    <button id="position-url" type="button">Put position in URL</button>
-  </div>
-  <label for="reply">Assistant reply</label>
-  <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
-  <div class="buttons" aria-label="Manual actions">
-    <button type="button" data-action="render">Run Render</button>
-    <button type="button" data-action="clear">Run Clear</button>
-    <button type="button" data-action="speak">Run Speak</button>
-    <button type="button" data-action="upper">Run Upper</button>
-  </div>
-  <div id="waiting" hidden>
-    <div id="countdown" role="timer" aria-label="Time until action runs"></div>
-    <button id="cancel" type="button">Cancel</button>
-  </div>
-  <p id="status" role="status" aria-live="polite">Ready.</p>
-  <details>
-    <summary>Help / About · v0.7.0</summary>
-    <ul>
-      <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
-      <li>The top right button enters or exits page fullscreen. The choice is saved in this browser. If a browser blocks automatic restoration, use Restore fullscreen. Esc also exits fullscreen.</li>
-      <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
-        <code>?u=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
-      <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
-        use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
-        Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
-      <li><code>t</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>t=</code>; Full view removes it from the address bar after reading it.</li>
-      <li><code>r</code>: fills the Assistant reply field. URL-encode special characters. Older long parameter names still work and are shortened in the address bar.</li>
-      <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
-      <li>Images can expand to fill fullscreen while keeping their proportions, even when the source image is small. Animated images also have Play/Pause and frame seeking in a WebCodecs browser such as Chrome/Edge.</li>
-      <li>Store a base64 image or video in pieces with <code>?s=clip1&amp;p=1&amp;n=2&amp;f=image/png&amp;d=BASE64_CHUNK</code>, then send part 2. Parts are numbered from 1. Include <code>h=3</code> to set how long an image plays; the default is 3 seconds. URL-encode the base64 chunk.</li>
-      <li>Play saved items in order with <code>?l=clip1,clip2</code>. The player advances after each video or image. Use <code>?x=clip1</code> to remove a stored item. Browser local storage has a small quota, so large videos may not fit.</li>
-      <li>Share compositor tracks with <code>?tr=clip1@0,clip2@3|clip3@1&amp;at=2.50</code>. Each <code>@</code> value is a start second; trimmed clips add <code>~sourceStart~duration</code>. <code>at</code> is the scrubber position. The receiving browser needs the saved clips.</li>
-      <li>Use the menu to save clips. The large preview shows the whole clip frame under the yellow playhead. The red line on its tile marks the current rendered frame. Tap the top of the yellow playhead to lock or unlock the red line; drag the yellow handle or click the ruler to scrub. The bottom strip can expand into tracks or collapse for render focus. Pin locks the preview's internal dimensions while fitting it inside the available area. Drag a clip to move it; the tile follows in real time. Drag its left or right yellow edge to trim it. Snap on aligns nearby seconds and clip edges within 0.2 seconds. The track area scrolls horizontally. Use Put position in URL to share the layout and current position.</li>
-      <li>Select clips with their check buttons to move them together. Split cuts selected clips at the playhead; with no selection, it cuts the visible clip. Each side must be at least 0.1 seconds long.</li>
-      <li>Expand Tracks and use − or + at the left of the seconds ruler to zoom the timeline. The scale is saved in this browser.</li>
-      <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
-      <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
-      <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
-      <li><code>m</code>: saves memory across page loads; an empty value clears memory.</li>
-      <li><code>c</code>: saves the Clip ID across page loads.</li>
-      <li><code>w</code>: seconds before the action, including decimals; maximum 3600.
-        Invalid or negative values become 0. Cancel stops a pending action.</li>
-    </ul>
-    <p><a href="?t=hello&amp;a=render&amp;w=5"><code>index.html?t=hello&amp;a=render&amp;w=5</code></a></p>
-    <p><a href="?t=hello&amp;r=Hi%20there%21&amp;a=render"><code>index.html?t=hello&amp;r=Hi%20there%21&amp;a=render</code></a></p>
-    <p><a href="?t=hello%20there&amp;a=upper&amp;w=0.5"><code>index.html?t=hello%20there&amp;a=upper&amp;w=0.5</code></a></p>
-    <p><a href="?m=Remember%20this&amp;c=clip-123&amp;a=render"><code>index.html?m=Remember%20this&amp;c=clip-123&amp;a=render</code></a></p>
-    <p><a href="?m="><code>index.html?m=</code></a> clears saved memory.</p>
-    <p>Manual Run buttons cancel any pending action. Speech availability depends on the browser;
-      some browsers require tapping the page (or Run Speak in the full interface) before audio can play.
-      When audio is unavailable, highlighting continues silently.</p>
-  </details>
-</aside>
-<main id="stage">
-  <div id="minimal-display" aria-live="polite">
-    <div id="display-text" class="plain-text"></div>
-    <div id="display-reply" class="plain-text"></div>
-  </div>
-  <div id="render-surface">
-  <div id="output" aria-label="Rendered text" aria-live="polite"></div>
-    <div id="composition-preview" aria-label="Composition preview">
-      <img id="composition-image" alt="Current composition frame" hidden>
-      <canvas id="composition-image-frame" role="img" aria-label="Current animation frame" hidden></canvas>
-      <video id="composition-video" playsinline muted hidden></video>
-      <span id="composition-empty">Add clips to a track to preview them.</span>
-    </div>
-  </div>
-  <p id="compositor-status" role="status" aria-live="polite">Add a saved clip to start. Drag a tile to set its start second or move it to another track.</p>
-</main>
-<section id="compositor" aria-labelledby="compositor-title">
-    <h2 id="compositor-title">Video compositor</h2>
-    <div id="timeline-controls">
-      <div class="compositor-actions"><button id="composition-play" type="button">Play</button></div>
-      <div id="seek-wrap"><input id="composition-scrubber" type="range" min="0" max="0" step="0.01" value="0" aria-label="Composition position in seconds"><span id="compact-render-frame" aria-hidden="true" hidden></span></div>
-      <div id="composition-time">0.00 / 0.00 seconds</div>
-      <button id="split-clip" type="button" title="Split selected clips at the playhead, or the visible clip if none are selected">Split</button>
-      <button id="snap-toggle" type="button" aria-pressed="true" title="Snap within 0.2 seconds to seconds and clip edges">Snap</button>
-      <button id="pin-preview" type="button" aria-pressed="false">Pin</button>
-      <button id="timeline-toggle" type="button" aria-controls="track-list" aria-expanded="false">Expand tracks</button>
-    </div>
-    <div id="track-list" aria-label="Composition tracks"><div id="track-content"></div></div>
-  </section>
-<script>
+import { compactParams } from "./url-parameters.js";
+import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia } from "./media-store.js";
+
   'use strict';
-  function initialize() {
-    const shortParameters = {
-      text: 't', reply: 'r', usage: 'u', store: 's', part: 'p', total: 'n',
-      mime: 'f', data: 'd', seconds: 'h', timeline: 'l', delete: 'x',
-      tracks: 'tr', pos: 'at', action: 'a', speak: 'sp', memory: 'm',
-      clip: 'c', delay: 'w'
-    };
-    function compactParams() {
-      const url = new URL(window.location.href);
-      let changed = false;
-      for (const [longName, shortName] of Object.entries(shortParameters)) {
-        if (!url.searchParams.has(longName)) continue;
-        if (!url.searchParams.has(shortName)) {
-          url.searchParams.set(shortName, url.searchParams.get(longName));
-        }
-        url.searchParams.delete(longName);
-        changed = true;
-      }
-      if (changed) {
-        try { window.history.replaceState(null, '', url); }
-        catch (error) { /* Keep using the short names even when history is unavailable. */ }
-      }
-      return url.searchParams;
-    }
+  export function initialize() {
     const fullscreenButton = document.getElementById('page-fullscreen');
     const drawerFullscreenButton = document.getElementById('drawer-fullscreen');
     const fullscreenRestoreButton = document.getElementById('fullscreen-restore');
@@ -452,7 +36,6 @@
       fullscreenButton.setAttribute('aria-label', label);
       fullscreenButton.setAttribute('aria-pressed', String(active));
       fullscreenButton.title = label;
-      fullscreenButton.textContent = active ? '✕' : '⛶';
       drawerFullscreenButton.textContent = label;
       drawerFullscreenButton.setAttribute('aria-pressed', String(active));
     }
@@ -479,6 +62,20 @@
     }
     fullscreenButton.addEventListener('click', togglePageFullscreen);
     drawerFullscreenButton.addEventListener('click', togglePageFullscreen);
+    const teslaFullscreenButton = document.getElementById('tesla-fullscreen');
+    teslaFullscreenButton.disabled = !/^https?:$/.test(window.location.protocol);
+    teslaFullscreenButton.addEventListener('click', () => {
+      const target = new URL(window.location.href);
+      const mode = target.searchParams.get('m')?.toLowerCase();
+      target.search = '';
+      target.hash = '';
+      if (mode === 'e' || mode === 'editor' || mode === 'sp' || mode === 'screenplay') {
+        target.searchParams.set('m', mode);
+      }
+      const theater = new URL('https://www.youtube.com/redirect');
+      theater.searchParams.set('q', target.href);
+      window.location.assign(theater.href);
+    });
     fullscreenRestoreButton.addEventListener('click', () => { void restoreFullscreen(); });
     document.addEventListener('fullscreenchange', syncFullscreen);
     document.addEventListener('webkitfullscreenchange', syncFullscreen);
@@ -507,6 +104,14 @@
       if (!document.hidden) void restoreFullscreen();
     });
     const field = document.getElementById('text');
+    const screenplayText = document.getElementById('screenplay-text');
+    document.querySelectorAll('[data-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('m', button.dataset.mode);
+        window.location.assign(url.href);
+      });
+    });
     const replyField = document.getElementById('reply');
     const displayText = document.getElementById('display-text');
     const displayReply = document.getElementById('display-reply');
@@ -575,101 +180,6 @@
       for (const [element, dispose] of mediaSessions) {
         if (element === target || target.contains(element)) dispose();
       }
-    }
-    const mediaStorageKey = id => `urlAutofill.media.v1.${id}`;
-    const validMediaId = id => /^[a-zA-Z0-9_-]{1,64}$/.test(id);
-    const validMime = mime => /^(image|video)\/[a-z0-9.+-]+$/i.test(mime);
-    function storeMediaPart(params) {
-      const id = params.get('s');
-      if (!validMediaId(id)) throw new Error('Store ID must use 1–64 letters, numbers, _ or -.');
-      const part = Number(params.get('p'));
-      const total = Number(params.get('n'));
-      if (!Number.isInteger(part) || !Number.isInteger(total) || part < 1 || total < 1 ||
-          part > total || total > 1000) throw new Error('Use a part number from 1 to total (maximum 1000).');
-      let data = params.get('d');
-      if (!data) throw new Error('Missing base64 data chunk.');
-      data = data.replaceAll(' ', '+'); // URLSearchParams decodes an unescaped + as a space.
-      const prefix = data.match(/^data:((?:image|video)\/[a-z0-9.+-]+);base64,/i);
-      if (prefix) data = data.slice(prefix[0].length);
-      if (!data) throw new Error('Missing base64 data chunk.');
-      if (!/^[a-zA-Z0-9+/]*={0,2}$/.test(data)) throw new Error('Chunk must contain base64 data.');
-      const base = mediaStorageKey(id);
-      const previous = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
-      const mime = (params.get('f') || prefix?.[1] || previous?.mime || '').toLowerCase();
-      if (!validMime(mime)) throw new Error('Supply an image or video MIME type, such as image/png.');
-      if (previous && (previous.mime !== mime || previous.total !== total)) {
-        throw new Error('Stored type or part count differs. Delete this ID before replacing it.');
-      }
-      const seconds = params.has('h') ? Number(params.get('h')) : previous?.seconds ?? 3;
-      if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 3600) {
-        throw new Error('Image seconds must be between 0.1 and 3600.');
-      }
-      window.localStorage.setItem(`${base}.meta`, JSON.stringify({ mime, total, seconds }));
-      window.localStorage.setItem(`${base}.part.${part}`, data);
-      let saved = 0;
-      for (let index = 1; index <= total; index++) {
-        if (window.localStorage.getItem(`${base}.part.${index}`) !== null) saved++;
-      }
-      return `Saved ${id} part ${part}/${total} (${saved}/${total} present).`;
-    }
-    function storeWholeMedia(id, dataUri, seconds) {
-      if (!validMediaId(id)) throw new Error('Clip ID must use 1–64 letters, numbers, _ or -.');
-      const match = dataUri.trim().match(/^data:((?:image|video)\/[a-z0-9.+-]+);base64,([\s\S]+)$/i);
-      if (!match) throw new Error('Choose an image or video file, or use a base64 data URI.');
-      const mime = match[1].toLowerCase();
-      const encoded = match[2].replaceAll(' ', '+').replace(/[\r\n\t]/g, '');
-      if (!/^[a-zA-Z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1 ||
-          (encoded.includes('=') && encoded.length % 4 !== 0)) {
-        throw new Error('The data URI contains invalid base64.');
-      }
-      if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 3600) {
-        throw new Error('Image seconds must be between 0.1 and 3600.');
-      }
-      const base = mediaStorageKey(id);
-      if (window.localStorage.getItem(`${base}.meta`) !== null) {
-        throw new Error('That clip ID is already stored. Delete it before replacing it.');
-      }
-      window.localStorage.setItem(`${base}.part.1`, encoded);
-      try {
-        window.localStorage.setItem(`${base}.meta`, JSON.stringify({ mime, total: 1, seconds }));
-      } catch (error) {
-        window.localStorage.removeItem(`${base}.part.1`);
-        throw error;
-      }
-      return `Saved ${id} (${mime}).`;
-    }
-    function deleteMedia(id) {
-      if (!validMediaId(id)) throw new Error('Invalid media ID to delete.');
-      const base = mediaStorageKey(id);
-      const meta = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
-      if (meta && Number.isInteger(meta.total) && meta.total <= 1000) {
-        for (let index = 1; index <= meta.total; index++) {
-          window.localStorage.removeItem(`${base}.part.${index}`);
-        }
-      }
-      window.localStorage.removeItem(`${base}.meta`);
-      return `Deleted stored media ${id}.`;
-    }
-    function loadMedia(id) {
-      if (!validMediaId(id)) throw new Error(`Invalid timeline ID: ${id}.`);
-      const base = mediaStorageKey(id);
-      const meta = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
-      if (!meta || !validMime(meta.mime) || !Number.isInteger(meta.total) ||
-          meta.total < 1 || meta.total > 1000) throw new Error(`No stored media named ${id}.`);
-      const parts = [];
-      for (let index = 1; index <= meta.total; index++) {
-        const part = window.localStorage.getItem(`${base}.part.${index}`);
-        if (part === null) throw new Error(`${id} is missing part ${index}/${meta.total}.`);
-        parts.push(part);
-      }
-      const encoded = parts.join('');
-      if (!/^[a-zA-Z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1 ||
-          (encoded.includes('=') && encoded.length % 4 !== 0)) {
-        throw new Error(`${id} does not form valid base64 data.`);
-      }
-      return { id, type: meta.mime.startsWith('video/') ? 'video' : 'image',
-        src: `data:${meta.mime};base64,${encoded}`,
-        seconds: Number.isFinite(meta.seconds) ? meta.seconds : 3 };
     }
     function renderTimeline(target, names) {
       let items;
@@ -1073,6 +583,7 @@
     minimalToggle.addEventListener('click', () => setMinimal(!document.body.classList.contains('minimal')));
     document.addEventListener('keydown', event => {
       if (event.key !== 'u' || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+          document.body.classList.contains('screenplay-mode') ||
           event.target.closest('input, textarea, select, [contenteditable]')) return;
       setMinimal(!document.body.classList.contains('minimal'));
     });
@@ -1118,11 +629,16 @@
     }
     function saveText() {
       memoryState.text = field.value;
+      if (screenplayText.value !== field.value) screenplayText.value = field.value;
       saveMemory();
       syncTextParameter(document.body.classList.contains('minimal'));
       syncDisplay();
     }
     field.addEventListener('input', saveText);
+    screenplayText.addEventListener('input', () => {
+      field.value = screenplayText.value;
+      saveText();
+    });
     replyField.addEventListener('input', () => {
       memoryState.reply = replyField.value;
       saveMemory();
@@ -1162,6 +678,21 @@
       const storedZoom = Number(window.localStorage.getItem(timelineZoomKey));
       if (storedZoom >= 10 && storedZoom <= 160) timelineScale = storedZoom;
     } catch (error) { /* Keep the default zoom without browser storage. */ }
+    const browserZoomKey = 'urlAutofill.browserZoom.v1';
+    const browserZoomToggle = document.getElementById('browser-zoom-toggle');
+    let browserZoomEnabled = false;
+    try { browserZoomEnabled = window.localStorage.getItem(browserZoomKey) === '1'; }
+    catch (error) { /* Use timeline pinch zoom without browser storage. */ }
+    function setBrowserZoom(enabled) {
+      browserZoomEnabled = enabled;
+      document.body.classList.toggle('browser-timeline-zoom', enabled);
+      browserZoomToggle.textContent = `Browser zoom: ${enabled ? 'On' : 'Off'}`;
+      browserZoomToggle.setAttribute('aria-pressed', String(enabled));
+      try { window.localStorage.setItem(browserZoomKey, enabled ? '1' : '0'); }
+      catch (error) { /* The zoom mode still toggles without browser storage. */ }
+    }
+    browserZoomToggle.addEventListener('click', () => setBrowserZoom(!browserZoomEnabled));
+    setBrowserZoom(browserZoomEnabled);
     const trackLabelWidth = 96;
     let trackPlayhead = null;
     const compositionImage = document.getElementById('composition-image');
@@ -1177,6 +708,22 @@
     const pinPreviewButton = document.getElementById('pin-preview');
     const snapToggle = document.getElementById('snap-toggle');
     const compositorStatus = document.getElementById('compositor-status');
+    const compositorStatusText = document.getElementById('compositor-status-text');
+    const hintToggle = document.getElementById('hint-toggle');
+    const hintVisibilityKey = 'urlAutofill.hideHint.v1';
+    let hintHidden = false;
+    try { hintHidden = window.localStorage.getItem(hintVisibilityKey) === '1'; }
+    catch (error) { /* Keep the hint visible without browser storage. */ }
+    function setHintHidden(hidden) {
+      hintHidden = hidden;
+      compositorStatus.hidden = hidden;
+      hintToggle.textContent = hidden ? 'Show hint' : 'Hide hint';
+      try { window.localStorage.setItem(hintVisibilityKey, hidden ? '1' : '0'); }
+      catch (error) { /* The hint still toggles without browser storage. */ }
+    }
+    hintToggle.addEventListener('click', () => setHintHidden(!hintHidden));
+    document.getElementById('compositor-status-close').addEventListener('click', () => setHintHidden(true));
+    setHintHidden(hintHidden);
     const compositorKey = 'urlAutofill.compositor.v1';
     const snapStorageKey = 'urlAutofill.snap.v1';
     let snapEnabled = true;
@@ -1213,9 +760,9 @@
     }
     window.addEventListener('pagehide', () => saveSession(true));
     const focusStorageKey = 'urlAutofill.renderFocus.v1';
-    let renderFocus = true;
-    try { renderFocus = window.localStorage.getItem(focusStorageKey) !== '0'; }
-    catch (error) { /* Keep the compact timeline when storage is unavailable. */ }
+    let renderFocus = false;
+    try { renderFocus = window.localStorage.getItem(focusStorageKey) === '1'; }
+    catch (error) { /* Keep the expanded timeline when storage is unavailable. */ }
     function setRenderFocus(focused) {
       renderFocus = focused;
       document.body.classList.toggle('render-focus', focused);
@@ -1224,6 +771,7 @@
       timelineToggle.setAttribute('aria-expanded', String(!focused));
       try { window.localStorage.setItem(focusStorageKey, focused ? '1' : '0'); }
       catch (error) { /* The timeline still expands without browser storage. */ }
+      window.dispatchEvent(new CustomEvent('urlAutofill:focus', { detail: { focused } }));
     }
     timelineToggle.addEventListener('click', () => setRenderFocus(!renderFocus));
     const stage = document.getElementById('stage');
@@ -1278,6 +826,7 @@
     let compositionStarted = 0;
     let compositionRevision = 0;
     let rulerResizeObserver = null;
+    let timelineGestureController = null;
     let visibleItem = null;
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
@@ -1287,7 +836,7 @@
       if (compositionPlaying && !session.lockRenderFrame) stopComposition();
     });
     function compositorMessage(text, error = false) {
-      compositorStatus.textContent = text;
+      compositorStatusText.textContent = text;
       compositorStatus.classList.toggle('error', error);
     }
     function validTracks(value) {
@@ -1654,6 +1203,7 @@
       stopComposition();
       disposeImagePreview();
       rulerResizeObserver?.disconnect();
+      timelineGestureController?.abort();
       const existingClips = new Set(tracks.flat());
       for (const clip of selectedClips) if (!existingClips.has(clip)) selectedClips.delete(clip);
       const source = tracks.map(track => track.map(clip => ({ ...clip })));
@@ -1687,7 +1237,6 @@
       }
       else if (hadComposition && !document.body.classList.contains('minimal')) render();
       let laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
-      trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
       const ruler = document.createElement('div');
       ruler.className = 'track-row';
       const rulerLabel = document.createElement('div');
@@ -1717,7 +1266,7 @@
         const labelStep = Math.max(1, Math.ceil(40 / timelineScale));
         const first = Math.max(0, Math.floor((trackList.scrollLeft - trackLabelWidth) /
           timelineScale) - 1);
-        const last = Math.min(Math.floor((laneWidth - 1) / timelineScale),
+        const last = Math.min(Math.floor((rulerLane.clientWidth - 1) / timelineScale),
           Math.ceil((trackList.scrollLeft + trackList.clientWidth - trackLabelWidth) /
             timelineScale) + 1);
         const ticks = document.createDocumentFragment();
@@ -1730,35 +1279,95 @@
         }
         rulerLane.replaceChildren(ticks);
       }
-      function changeTimelineZoom(delta) {
-        const nextScale = Math.max(10, Math.min(160, timelineScale + delta));
-        if (nextScale === timelineScale) return;
-        const centerTime = Math.max(0, (trackList.scrollLeft + trackList.clientWidth / 2 -
-          trackLabelWidth) / timelineScale);
-        timelineScale = nextScale;
-        try { window.localStorage.setItem(timelineZoomKey, String(timelineScale)); }
-        catch (error) { /* Zoom still works without browser storage. */ }
-        updateZoomLabel();
-        laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
-        trackContent.style.width = `${trackLabelWidth + laneWidth}px`;
-        trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(lane => {
-          lane.style.width = `${laneWidth}px`;
-        });
-        for (const entry of compositionItems) {
-          if (!entry.tile) continue;
-          entry.tile.style.left = `${Math.round(entry.start * timelineScale)}px`;
-          entry.tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
+      function setTimelineZoom(nextScale, anchorTime, anchorX) {
+        nextScale = Math.max(10, Math.min(160, Math.round(nextScale)));
+        if (nextScale !== timelineScale) {
+          timelineScale = nextScale;
+          try { window.localStorage.setItem(timelineZoomKey, String(timelineScale)); }
+          catch (error) { /* Zoom still works without browser storage. */ }
+          updateZoomLabel();
+          laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
+          trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(lane => {
+            lane.style.width = `${laneWidth}px`;
+          });
+          for (const entry of compositionItems) {
+            if (!entry.tile) continue;
+            entry.tile.style.left = `${Math.round(entry.start * timelineScale)}px`;
+            entry.tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
+          }
+          syncCompositionPreview();
         }
-        syncCompositionPreview();
-        trackList.scrollLeft = Math.max(0, trackLabelWidth + centerTime * timelineScale -
-          trackList.clientWidth / 2);
+        trackList.scrollLeft = Math.max(0, trackLabelWidth + anchorTime * timelineScale - anchorX);
         renderRulerTicks();
+      }
+      function changeTimelineZoom(delta) {
+        const anchorX = trackList.clientWidth / 2;
+        const anchorTime = Math.max(0, (trackList.scrollLeft + anchorX -
+          trackLabelWidth) / timelineScale);
+        setTimelineZoom(timelineScale + delta, anchorTime, anchorX);
       }
       zoomOut.addEventListener('click', () => changeTimelineZoom(-10));
       zoomIn.addEventListener('click', () => changeTimelineZoom(10));
+      let pinch = null;
+      let pendingTouchSeek = null;
+      let suppressTouchSeek = false;
+      let suppressDragForPinch = false;
+      function pinchGeometry(touches) {
+        const first = touches[0];
+        const second = touches[1];
+        return { distance: Math.hypot(second.clientX - first.clientX,
+          second.clientY - first.clientY),
+          x: (first.clientX + second.clientX) / 2 - trackList.getBoundingClientRect().left };
+      }
+      function beginPinch(event) {
+        if (browserZoomEnabled || event.touches.length !== 2) return;
+        event.preventDefault();
+        const { distance, x } = pinchGeometry(event.touches);
+        if (!distance) return;
+        suppressTouchSeek = true;
+        suppressDragForPinch = true;
+        pendingTouchSeek = null;
+        pinch = { distance, scale: timelineScale,
+          time: Math.max(0, (trackList.scrollLeft + x - trackLabelWidth) / timelineScale) };
+      }
+      function movePinch(event) {
+        if (browserZoomEnabled || event.touches.length !== 2) return;
+        if (!pinch) beginPinch(event);
+        if (!pinch) return;
+        event.preventDefault();
+        const { distance, x } = pinchGeometry(event.touches);
+        setTimelineZoom(pinch.scale * distance / pinch.distance, pinch.time, x);
+      }
+      timelineGestureController = new AbortController();
+      const gestureOptions = { passive: false, signal: timelineGestureController.signal };
+      trackList.addEventListener('touchstart', beginPinch, gestureOptions);
+      trackList.addEventListener('touchmove', movePinch, gestureOptions);
+      trackList.addEventListener('touchend', event => {
+        if (event.touches.length < 2) pinch = null;
+      }, { signal: timelineGestureController.signal });
+      trackList.addEventListener('touchcancel', () => { pinch = null; },
+        { signal: timelineGestureController.signal });
+      trackList.addEventListener('gesturestart', event => {
+        if (!browserZoomEnabled) event.preventDefault();
+      }, gestureOptions);
+      trackList.addEventListener('gesturechange', event => {
+        if (!browserZoomEnabled) event.preventDefault();
+      }, gestureOptions);
       rulerLane.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch') {
+          pendingTouchSeek = event.pointerId;
+          suppressTouchSeek = false;
+          return;
+        }
         setCompositionTime((event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       });
+      rulerLane.addEventListener('pointerup', event => {
+        if (event.pointerId !== pendingTouchSeek) return;
+        pendingTouchSeek = null;
+        if (!suppressTouchSeek) setCompositionTime(
+          (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
+      });
+      rulerLane.addEventListener('pointercancel', () => { pendingTouchSeek = null; });
       ruler.append(rulerLabel, rulerLane);
       trackContent.append(ruler);
       trackList.onscroll = renderRulerTicks;
@@ -1782,6 +1391,7 @@
         (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       playheadHandle.addEventListener('pointerdown', event => {
         if (event.button !== 0) return;
+        if (event.isPrimary) suppressDragForPinch = false;
         event.preventDefault();
         draggingPlayhead = true;
         movedPlayhead = false;
@@ -1790,7 +1400,7 @@
         playheadHandle.setPointerCapture(event.pointerId);
       });
       playheadHandle.addEventListener('pointermove', event => {
-        if (!draggingPlayhead) return;
+        if (!draggingPlayhead || suppressDragForPinch) return;
         if (Math.abs(event.clientX - pointerStartX) > 4 ||
             Math.abs(event.clientY - pointerStartY) > 4) movedPlayhead = true;
         if (movedPlayhead) seekFromPointer(event);
@@ -1798,6 +1408,7 @@
       playheadHandle.addEventListener('pointerup', event => {
         if (!draggingPlayhead) return;
         draggingPlayhead = false;
+        if (suppressDragForPinch) return;
         if (movedPlayhead) seekFromPointer(event);
         else toggleFrameLock();
       });
@@ -1909,7 +1520,6 @@
             compositionScrubber.max = String(compositionDuration);
             const liveLaneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
             laneWidth = liveLaneWidth;
-            trackContent.style.width = `${trackLabelWidth + liveLaneWidth}px`;
             trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(lane => {
               lane.style.width = `${liveLaneWidth}px`;
             });
@@ -1953,6 +1563,7 @@
               pendingClipFocus.track === trackIndex) focusGrip = grip;
           grip.addEventListener('pointerdown', event => {
             if (event.button !== 0) return;
+            if (event.isPrimary) suppressDragForPinch = false;
             event.preventDefault();
             if (event.ctrlKey || event.metaKey || event.shiftKey) {
               if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
@@ -1995,6 +1606,7 @@
                 return clientY >= rect.top && clientY <= rect.bottom;
               });
             const move = moveEvent => {
+              if (suppressDragForPinch) return;
               moved = moved || Math.abs(moveEvent.clientX - x) > 3 ||
                 Math.abs(moveEvent.clientY - y) > 3;
               if (!moved) return;
@@ -2024,7 +1636,6 @@
               compositionScrubber.max = String(compositionDuration);
               const liveLaneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
               laneWidth = liveLaneWidth;
-              trackContent.style.width = `${trackLabelWidth + liveLaneWidth}px`;
               trackContent.querySelectorAll('.track-lane, .track-ruler-lane').forEach(value => {
                 value.style.width = `${liveLaneWidth}px`;
               });
@@ -2033,6 +1644,7 @@
               compositorMessage(`${moving.length} clip${moving.length === 1 ? '' : 's'}: ${liveStart.toFixed(2)}s on track ${liveTrack + 1}`);
             };
             const finish = endEvent => {
+              if (suppressDragForPinch) { cancel(); return; }
               grip.removeEventListener('pointermove', move);
               grip.removeEventListener('pointerup', finish);
               grip.removeEventListener('pointercancel', cancel);
@@ -2112,6 +1724,7 @@
             }
             handle.addEventListener('pointerdown', event => {
               if (event.button !== 0) return;
+              if (event.isPrimary) suppressDragForPinch = false;
               event.preventDefault();
               event.stopPropagation();
               stopComposition();
@@ -2119,6 +1732,7 @@
               const originX = event.clientX;
               let moved = false;
               const move = moveEvent => {
+                if (suppressDragForPinch) return;
                 moved = moved || Math.abs(moveEvent.clientX - originX) > 1;
                 if (moved) applyDelta((moveEvent.clientX - originX) / timelineScale);
               };
@@ -2129,6 +1743,7 @@
               };
               const finish = endEvent => {
                 cleanup();
+                if (suppressDragForPinch) { void refreshCompositor(); return; }
                 if (!moved) return;
                 applyDelta((endEvent.clientX - originX) / timelineScale);
                 commit();
@@ -2427,6 +2042,10 @@
       stopSpeech();
       loadMemory();
       const params = compactParams();
+      const requestedMode = (params.get('m') || '').toLowerCase();
+      const mode = requestedMode === 'e' || requestedMode === 'editor' ? 'editor' :
+        requestedMode === 'sp' || requestedMode === 'screenplay' ? 'screenplay' : '';
+      document.body.classList.toggle('screenplay-mode', mode === 'screenplay');
       let mediaMessage = '';
       let mediaError = false;
       try {
@@ -2437,8 +2056,12 @@
         mediaError = true;
       }
       let changed = false;
-      for (const [parameter, key] of [['m', 'memory'], ['c', 'clip']]) {
+      for (const [parameter, key] of [['memory', 'memory'], ['c', 'clip']]) {
         if (params.has(parameter)) { memoryState[key] = params.get(parameter); changed = true; }
+      }
+      if (!params.has('memory') && params.has('m') && !mode) {
+        memoryState.memory = params.get('m');
+        changed = true;
       }
       if (params.has('l') || params.has('t')) {
         field.value = params.has('l') ? `timeline:${params.get('l')}` : params.get('t');
@@ -2447,6 +2070,7 @@
       } else {
         field.value = memoryState.text;
       }
+      screenplayText.value = field.value;
       if (params.has('r')) {
         replyField.value = params.get('r');
         memoryState.reply = replyField.value;
@@ -2459,8 +2083,8 @@
       let savedMinimal = false;
       try { savedMinimal = window.localStorage.getItem(minimalStorageKey) === '1'; }
       catch (error) { /* Use the full interface when storage is unavailable. */ }
-      setMinimal(params.has('minimal') ? params.get('minimal') === '1' : savedMinimal,
-        params.has('minimal'));
+      setMinimal(mode ? false : params.has('minimal') ? params.get('minimal') === '1' : savedMinimal,
+        !mode && params.has('minimal'));
       try {
         const savedTracks = JSON.parse(window.localStorage.getItem(compositorKey));
         tracks = validTracks(savedTracks) ? savedTracks : [[]];
@@ -2518,11 +2142,3 @@
       if (event.persisted) startup();
     });
   }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize, { once: true });
-  } else {
-    initialize();
-  }
-</script>
-</body>
-</html>

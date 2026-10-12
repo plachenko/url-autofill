@@ -1,8 +1,18 @@
 # URL Autofill
 
-Car-browser helper page (v0.7.0). Open with query params, for example:
+Car-browser helper page (v0.7.0), built with SvelteKit and `adapter-static`. Open with query params, for example:
 
 `https://plachenko.github.io/url-autofill/?t=hi&r=hello&a=speak`
+
+## Develop and build
+
+Run `npm install`, then `npm run dev`. Use `npm run check` to check the Svelte components and `npm run build` for a root-path static build in `build/`. For this repository's GitHub Pages path, run `npm run build:pages`. The included workflow builds and publishes `build/` on pushes to `main`; set the repository's Pages source to **GitHub Actions**. The build includes `.nojekyll` so GitHub Pages serves SvelteKit's `_app` assets. The previous single-file version is preserved in `legacy/index.html` for reference.
+
+The UI is divided into controls, clip library, preview, screenplay, minimal display, and timeline components under `src/lib/components/`. URL parsing and clip storage live in separate modules. The existing playback and editing controller remains in `src/lib/legacy-controller.js` while the browser interactions are moved over incrementally. Drag the bar between the preview and timeline to resize them; PaneForge saves the layout in this browser.
+
+Use `?m=e` for the timeline editor or `?m=sp` for a screenplay writing view. The full values `m=editor` and `m=screenplay` work too. Both modes edit the same saved text. `m` previously meant memory; older `m=` memory links still work unless their value is one of these mode names. Use `memory=` to set or clear memory alongside a mode, for example `?m=sp&memory=Draft` or `?memory=`.
+
+In a parked Tesla, open the menu and choose **Tesla Theater fullscreen** to return to this page through YouTube's Theater redirect. YouTube may ask you to choose **Go to site**. The redirect keeps the current mode but removes other URL query values so text and media data are not sent to YouTube; content already saved in this browser is restored when the page returns. This is separate from the standard page fullscreen button and depends on Tesla and YouTube continuing to allow the redirect.
 
 ## Saved media timeline
 
@@ -17,7 +27,7 @@ The full interface is the default. Open the hamburger menu for text fields, save
 | `seconds` | `h` | `timeline` | `l` |
 | `delete` | `x` | `tracks` | `tr` |
 | `pos` | `at` | `action` | `a` |
-| `speak` | `sp` | `memory` | `m` |
+| `speak` | `sp` | `mode` | `m` |
 | `clip` | `c` | `delay` | `w` |
 
 Send each base64 chunk in a separate URL to the same browser and origin:
