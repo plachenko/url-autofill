@@ -1,11 +1,6 @@
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; }
-  #usage-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
-    height: 16px; background: #10151eee; color: #9cabc0; font: 10px/13px system-ui, sans-serif;
-    text-align: right; padding-right: 8px; pointer-events: none; }
-  #usage-fill { position: absolute; bottom: 0; left: 0; height: 3px; width: 0;
-    background: #6989ac; }
   main { max-width: 1000px; margin: auto; }
   header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   h1 { font-size: clamp(28px, 5vw, 42px); margin: 0 0 24px; }

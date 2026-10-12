@@ -1,5 +1,5 @@
 export const shortParameters = {
-  text: 't', reply: 'r', usage: 'u', store: 's', part: 'p', total: 'n',
+  text: 't', reply: 'r', store: 's', part: 'p', total: 'n',
   mime: 'f', data: 'd', seconds: 'h', timeline: 'l', delete: 'x',
   tracks: 'tr', pos: 'at', action: 'a', speak: 'sp', mode: 'm',
   clip: 'c', delay: 'w'

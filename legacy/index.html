@@ -8,11 +8,6 @@
   :root { color-scheme: dark; font: 20px/1.5 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; }
-  #usage-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
-    height: 16px; background: #10151eee; color: #9cabc0; font: 10px/13px system-ui, sans-serif;
-    text-align: right; padding-right: 8px; pointer-events: none; }
-  #usage-fill { position: absolute; bottom: 0; left: 0; height: 3px; width: 0;
-    background: #6989ac; }
   main { max-width: 1000px; margin: auto; }
   header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   h1 { font-size: clamp(28px, 5vw, 42px); margin: 0 0 24px; }
@@ -301,7 +296,6 @@
 </style>
 </head>
 <body>
-<div id="usage-bar" aria-label="Cursor usage"><span id="usage-text">usage unavailable</span><div id="usage-fill"></div></div>
 <button id="menu-toggle" type="button" aria-label="Open menu" aria-controls="drawer" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
 <button id="page-fullscreen" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" aria-pressed="false" hidden><svg class="icon-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg><svg class="icon-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h5V4M20 9h-5V4M20 15h-5v5M4 15h5v5"/></svg></button>
 <button id="fullscreen-restore" type="button" hidden>Restore fullscreen</button>
@@ -368,11 +362,6 @@
       <li><code>m=e</code> opens the timeline editor; <code>m=sp</code> opens a screenplay writing page. <code>m=editor</code> and <code>m=screenplay</code> also work. Use the mode buttons above to switch.</li>
       <li>The top right button enters or exits page fullscreen. The choice is saved in this browser. If a browser blocks automatic restoration, use Restore fullscreen. Esc also exits fullscreen.</li>
       <li>Tesla Theater fullscreen opens this page through YouTube's redirect while the car is parked. If YouTube shows a confirmation page, choose Go to site. Text and clips saved in this browser remain available; URL query values are removed before redirecting, except the current mode.</li>
-      <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
-        <code>?u=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
-      <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
-        use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
-        Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
       <li><code>t</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>t=</code>; Full view removes it from the address bar after reading it.</li>
       <li><code>r</code>: fills the Assistant reply field. URL-encode special characters. Older long parameter names still work and are shortened in the address bar.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>
@@ -438,7 +427,7 @@
   'use strict';
   function initialize() {
     const shortParameters = {
-      text: 't', reply: 'r', usage: 'u', store: 's', part: 'p', total: 'n',
+      text: 't', reply: 'r', store: 's', part: 'p', total: 'n',
       mime: 'f', data: 'd', seconds: 'h', timeline: 'l', delete: 'x',
       tracks: 'tr', pos: 'at', action: 'a', speak: 'sp', mode: 'm',
       clip: 'c', delay: 'w'
@@ -572,37 +561,6 @@
     const replyField = document.getElementById('reply');
     const displayText = document.getElementById('display-text');
     const displayReply = document.getElementById('display-reply');
-    const usageBar = document.getElementById('usage-bar');
-    const usageText = document.getElementById('usage-text');
-    const usageFill = document.getElementById('usage-fill');
-    const usageEnabled = compactParams().get('u') !== '0';
-    usageBar.hidden = !usageEnabled;
-    let usageRequest = 0;
-    async function refreshUsage() {
-      if (!usageEnabled || window.location.protocol === 'file:') return;
-      const request = ++usageRequest;
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 10000);
-      try {
-        const response = await fetch('/api/usage', { cache: 'no-store', signal: controller.signal });
-        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
-        const usage = await response.json();
-        if (!usage || usage.available !== true) throw new Error();
-        const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-        const money = value => number(value) ? `$${(value / 100).toFixed(2)}` : '—';
-        const percent = number(usage.percentUsed) ? usage.percentUsed : null;
-        if (request !== usageRequest) return;
-        usageText.textContent = `${money(usage.spentCents)} / ${money(usage.limitCents)}` +
-          (percent === null ? '' : ` · ${Math.round(percent)}%`);
-        usageFill.style.width = `${percent === null ? 0 : Math.min(100, percent)}%`;
-      } catch (error) {
-        if (request !== usageRequest) return;
-        usageText.textContent = 'usage unavailable';
-        usageFill.style.width = '0%';
-      } finally { window.clearTimeout(timeout); }
-    }
-    refreshUsage();
-    if (usageEnabled && window.location.protocol !== 'file:') window.setInterval(refreshUsage, 30000);
     let speechSession = 0;
     let speechTimers = [];
     function stopSpeech() {
@@ -2569,7 +2527,6 @@
       saveMemory();
       try { actions[name](); }
       catch (error) { message('The action could not run. Please try a manual Run button.', true); }
-      finally { refreshUsage(); }
     }
     document.querySelectorAll('[data-action]').forEach(button => {
       button.addEventListener('click', () => run(button.dataset.action));

@@ -5,11 +5,6 @@
       <li><code>m=e</code> opens the timeline editor; <code>m=sp</code> opens a screenplay writing page. <code>m=editor</code> and <code>m=screenplay</code> also work. Use the mode buttons above to switch.</li>
       <li>The top right button enters or exits page fullscreen. The choice is saved in this browser. If a browser blocks automatic restoration, use Restore fullscreen. Esc also exits fullscreen.</li>
       <li>Tesla Theater fullscreen opens this page through YouTube's redirect while the car is parked. If YouTube shows a confirmation page, choose Go to site. Text and clips saved in this browser remain available; URL query values are removed before redirecting, except the current mode.</li>
-      <li>The thin top bar shows Cursor usage, refreshing every 30 seconds and after actions.
-        <code>?u=0</code> hides it. Usage is unavailable when opened via <code>file://</code>.</li>
-      <li>Set <code>CURSOR_SESSION_TOKEN</code> as a Netlify environment variable for Functions:
-        use the <code>WorkosCursorSessionToken</code> cookie value from <code>cursor.com</code>.
-        Never paste it into this page. The dashboard endpoints are unofficial and may change.</li>
       <li><code>t</code>: fills the text field. URL-encode special characters. Minimal view puts the current text in <code>t=</code>; Full view removes it from the address bar after reading it.</li>
       <li><code>r</code>: fills the Assistant reply field. URL-encode special characters. Older long parameter names still work and are shortened in the address bar.</li>
       <li><code>data:video/</code> and <code>data:image/</code> values in text or reply display playable video or images; media is skipped by speech.</li>

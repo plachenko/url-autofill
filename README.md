@@ -21,14 +21,14 @@ The full interface is the default. Open the hamburger menu for text fields, save
 | Old name | Short name | Old name | Short name |
 | --- | --- | --- | --- |
 | `text` | `t` | `reply` | `r` |
-| `usage` | `u` | `store` | `s` |
-| `part` | `p` | `total` | `n` |
-| `mime` | `f` | `data` | `d` |
-| `seconds` | `h` | `timeline` | `l` |
-| `delete` | `x` | `tracks` | `tr` |
-| `pos` | `at` | `action` | `a` |
-| `speak` | `sp` | `mode` | `m` |
-| `clip` | `c` | `delay` | `w` |
+| `store` | `s` | `part` | `p` |
+| `total` | `n` | `mime` | `f` |
+| `data` | `d` | `seconds` | `h` |
+| `timeline` | `l` | `delete` | `x` |
+| `tracks` | `tr` | `pos` | `at` |
+| `action` | `a` | `speak` | `sp` |
+| `mode` | `m` | `clip` | `c` |
+| `delay` | `w` |  |  |
 
 Send each base64 chunk in a separate URL to the same browser and origin:
 

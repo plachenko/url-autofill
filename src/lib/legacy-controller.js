@@ -115,37 +115,6 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
     const replyField = document.getElementById('reply');
     const displayText = document.getElementById('display-text');
     const displayReply = document.getElementById('display-reply');
-    const usageBar = document.getElementById('usage-bar');
-    const usageText = document.getElementById('usage-text');
-    const usageFill = document.getElementById('usage-fill');
-    const usageEnabled = compactParams().get('u') !== '0';
-    usageBar.hidden = !usageEnabled;
-    let usageRequest = 0;
-    async function refreshUsage() {
-      if (!usageEnabled || window.location.protocol === 'file:') return;
-      const request = ++usageRequest;
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 10000);
-      try {
-        const response = await fetch('/api/usage', { cache: 'no-store', signal: controller.signal });
-        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
-        const usage = await response.json();
-        if (!usage || usage.available !== true) throw new Error();
-        const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-        const money = value => number(value) ? `$${(value / 100).toFixed(2)}` : '—';
-        const percent = number(usage.percentUsed) ? usage.percentUsed : null;
-        if (request !== usageRequest) return;
-        usageText.textContent = `${money(usage.spentCents)} / ${money(usage.limitCents)}` +
-          (percent === null ? '' : ` · ${Math.round(percent)}%`);
-        usageFill.style.width = `${percent === null ? 0 : Math.min(100, percent)}%`;
-      } catch (error) {
-        if (request !== usageRequest) return;
-        usageText.textContent = 'usage unavailable';
-        usageFill.style.width = '0%';
-      } finally { window.clearTimeout(timeout); }
-    }
-    refreshUsage();
-    if (usageEnabled && window.location.protocol !== 'file:') window.setInterval(refreshUsage, 30000);
     let speechSession = 0;
     let speechTimers = [];
     function stopSpeech() {
@@ -2018,7 +1987,6 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
       saveMemory();
       try { actions[name](); }
       catch (error) { message('The action could not run. Please try a manual Run button.', true); }
-      finally { refreshUsage(); }
     }
     document.querySelectorAll('[data-action]').forEach(button => {
       button.addEventListener('click', () => run(button.dataset.action));
