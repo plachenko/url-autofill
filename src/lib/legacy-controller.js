@@ -1253,7 +1253,8 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
       rulerLane.className = 'track-ruler-lane';
       rulerLane.style.width = `${laneWidth}px`;
       function renderRulerTicks() {
-        const labelStep = Math.max(1, Math.ceil(40 / timelineScale));
+        const minimumStep = Math.max(1, Math.ceil(40 / timelineScale));
+        const labelStep = [1, 2, 5, 10, 20].find(step => step >= minimumStep) ?? 20;
         const first = Math.max(0, Math.floor((trackList.scrollLeft - trackLabelWidth) /
           timelineScale) - 1);
         const last = Math.min(Math.floor((rulerLane.clientWidth - 1) / timelineScale),
@@ -1263,6 +1264,8 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
         for (let second = first; second <= last; second++) {
           const tick = document.createElement('span');
           tick.className = 'track-ruler-tick';
+          if (second % 10 === 0) tick.classList.add('is-ten');
+          else if (second % 5 === 0) tick.classList.add('is-five');
           tick.style.left = `${second * timelineScale}px`;
           if (second % labelStep === 0) tick.textContent = `${second}s`;
           ticks.append(tick);
