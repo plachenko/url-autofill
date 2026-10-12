@@ -153,6 +153,13 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       if (/^data:image\/[a-z0-9.+-]+(;[^,]*)?,/i.test(trimmed)) return 'image';
       return null;
     }
+    function imageFailure(src, error) {
+      const mime = src.match(/^data:([^;,]+)/i)?.[1];
+      const detail = error?.message?.trim();
+      return detail
+        ? `Could not display ${mime || 'image'}: ${detail.slice(0, 240)}`
+        : `Could not display ${mime || 'image'}. The browser reported a load or decode failure without a specific cause; the image may be incomplete, damaged, or unsupported.`;
+    }
     const mediaSessions = new Map();
     function disposeMedia(target) {
       for (const [element, dispose] of mediaSessions) {
@@ -193,12 +200,16 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       slider.step = '1';
       slider.setAttribute('aria-label', 'Timeline item');
       const position = document.createElement('span');
+      const imageError = document.createElement('p');
+      imageError.className = 'image-render-error';
+      imageError.setAttribute('role', 'alert');
+      imageError.hidden = true;
       const fullscreen = document.createElement('button');
       fullscreen.type = 'button';
       fullscreen.textContent = 'Toggle fullscreen';
       fullscreen.disabled = typeof requestFullscreen(viewer) !== 'function';
       controls.append(previous, play, next, slider, position, fullscreen);
-      viewer.append(image, video, controls);
+      viewer.append(image, video, imageError, controls);
       target.append(viewer);
       let index = 0;
       let playing = true;
@@ -249,6 +260,7 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
         index = nextIndex;
         finished = false;
         imageLoaded = false;
+        imageError.hidden = true;
         const item = items[index];
         image.hidden = item.type !== 'image';
         video.hidden = item.type !== 'video';
@@ -267,6 +279,9 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       image.addEventListener('error', () => {
         if (disposed || items[index].type !== 'image') return;
         playing = false;
+        image.hidden = true;
+        imageError.textContent = `Clip ${items[index].id}: ${imageFailure(items[index].src)}`;
+        imageError.hidden = false;
         update();
       });
       video.addEventListener('play', () => {
@@ -379,10 +394,15 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
           slider.value = String(frameIndex);
           position.textContent = `${frameIndex + 1} / ${total}`;
         }
-        function fallbackImage() {
+        function fallbackImage(error) {
           if (disposed) return;
           dispose();
           target.replaceChildren(fallbackViewer);
+          const notice = fallbackViewer.querySelector('.image-render-error');
+          if (notice) {
+            notice.textContent = `Animation playback stopped: ${error?.message || error?.name || 'frame decode failed'}. Showing the original image.`;
+            notice.hidden = false;
+          }
         }
         async function draw(index) {
           const request = ++revision;
@@ -415,7 +435,7 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
               next = 0;
             }
             try { if (await draw(next)) schedule(); }
-            catch (error) { fallbackImage(); }
+            catch (error) { fallbackImage(error); }
           }, duration);
         }
         async function toggle() {
@@ -425,7 +445,7 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
             ended = false;
             repetitions = 0;
             try { if (await draw(0)) schedule(); }
-            catch (error) { fallbackImage(); }
+            catch (error) { fallbackImage(error); }
           } else {
             schedule();
           }
@@ -436,7 +456,7 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
           repetitions = 0;
           ended = false;
           try { if (await draw(Number(slider.value))) schedule(); }
-          catch (error) { fallbackImage(); }
+          catch (error) { fallbackImage(error); }
         });
         fullscreen.addEventListener('click', () => {
           void changeFullscreen(fullscreenElement() === wrapper ? null : wrapper);
@@ -469,7 +489,6 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       target.textContent = '';
       const media = document.createElement(type === 'video' ? 'video' : 'img');
       media.className = 'rendered-media';
-      media.src = value.trim();
       if (type === 'video') {
         media.controls = true;
         media.playsInline = true;
@@ -480,6 +499,16 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       if (type === 'image') {
         const viewer = document.createElement('div');
         viewer.className = 'static-image';
+        const imageError = document.createElement('p');
+        imageError.className = 'image-render-error';
+        imageError.setAttribute('role', 'alert');
+        imageError.hidden = true;
+        media.addEventListener('error', () => {
+          if (!viewer.isConnected) return;
+          media.hidden = true;
+          imageError.textContent = imageFailure(value.trim());
+          imageError.hidden = false;
+        });
         const controls = document.createElement('div');
         controls.className = 'image-controls';
         const fullscreen = document.createElement('button');
@@ -490,11 +519,13 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
           void changeFullscreen(fullscreenElement() === viewer ? null : viewer);
         });
         controls.append(fullscreen);
-        viewer.append(media, controls);
+        viewer.append(media, imageError, controls);
         target.append(viewer);
+        media.src = value.trim();
         void enhanceImage(target, media, viewer, value.trim());
       } else {
         target.append(media);
+        media.src = value.trim();
       }
     }
     let displayedText;
@@ -857,6 +888,7 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
     const compositionImageFrame = document.getElementById('composition-image-frame');
     const compositionVideo = document.getElementById('composition-video');
     const compositionEmpty = document.getElementById('composition-empty');
+    const compositionError = document.getElementById('composition-error');
     const compositionScrubber = document.getElementById('composition-scrubber');
     const seekWrap = document.getElementById('seek-wrap');
     const compactRenderFrame = document.getElementById('compact-render-frame');
@@ -991,6 +1023,29 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
     let rulerResizeObserver = null;
     let timelineGestureController = null;
     let visibleItem = null;
+    let missingClipError = '';
+    let imageRenderError = '';
+    let imageLoadFailed = false;
+    let imageDecodeFailure = null;
+    function updateCompositionError() {
+      compositionError.textContent = imageRenderError || missingClipError;
+      compositionError.hidden = !compositionError.textContent;
+    }
+    compositionImage.addEventListener('load', () => {
+      if (!visibleItem || visibleItem.item.type !== 'image') return;
+      imageLoadFailed = false;
+      if (imageRenderError && !imagePreview?.ready) {
+        imageRenderError = '';
+        updateCompositionError();
+      }
+    });
+    compositionImage.addEventListener('error', () => {
+      if (!visibleItem || visibleItem.item.type !== 'image' || compositionImage.hidden) return;
+      imageLoadFailed = true;
+      compositionImage.hidden = true;
+      imageRenderError = `Clip ${visibleItem.item.id}: ${imageFailure(visibleItem.item.src, imageDecodeFailure)}`;
+      updateCompositionError();
+    });
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
     let pendingClipFocus = null;
@@ -1128,11 +1183,18 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
         imageLoopStarted = performance.now();
         compositionImage.hidden = true;
         compositionImageFrame.hidden = false;
+        imageRenderError = '';
+        updateCompositionError();
         syncCompositionPreview(true);
       } catch (error) {
         if (!state.cancelled) {
           state.decoder?.close();
           state.decoder = null;
+          imageDecodeFailure = error;
+          if (imageLoadFailed) {
+            imageRenderError = `Clip ${entry.item.id}: ${imageFailure(entry.item.src, error)}`;
+            updateCompositionError();
+          }
         }
       }
     }
@@ -1148,7 +1210,14 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
           compositionImageFrame.height = frame.displayHeight;
           compositionImageFrame.getContext('2d')?.drawImage(frame, 0, 0);
         } finally { result.image.close(); }
-      }).catch(() => { /* Keep the last decoded frame. */ });
+      }).catch(error => {
+        if (state.cancelled || visibleItem !== state.entry) return;
+        state.ready = false;
+        compositionImageFrame.hidden = true;
+        compositionImage.hidden = imageLoadFailed;
+        imageRenderError = `Clip ${state.entry.item.id}: animation frame failed: ${error.message || error.name || 'decode error'}.`;
+        updateCompositionError();
+      });
     }
     function syncFrameLockButton() {
       if (!trackPlayhead) return;
@@ -1169,6 +1238,7 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       const active = compositionItems.filter(entry =>
         session.playheadSeconds >= entry.start && session.playheadSeconds < entry.end)
         .sort((a, b) => b.track - a.track || b.start - a.start)[0] || null;
+      compositionEmpty.hidden = Boolean(active) || Boolean(missingClipError);
       if (active !== visibleItem) {
         visibleItem?.tile?.classList.remove('under-playhead');
         visibleItem?.tile?.removeAttribute('aria-current');
@@ -1177,11 +1247,14 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
         compositionVideo.removeAttribute('src');
         compositionImage.removeAttribute('src');
         visibleItem = active;
+        imageRenderError = '';
+        imageLoadFailed = false;
+        imageDecodeFailure = null;
+        updateCompositionError();
         active?.tile?.classList.add('under-playhead');
         active?.tile?.setAttribute('aria-current', 'true');
         compositionImage.hidden = !active || active.item.type !== 'image';
         compositionVideo.hidden = !active || active.item.type !== 'video';
-        compositionEmpty.hidden = Boolean(active);
         if (active?.item.type === 'image') {
           imageLoopStarted = performance.now();
           compositionImage.src = active.item.src;
@@ -1372,12 +1445,18 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       const existingClips = new Set(tracks.flat());
       for (const clip of selectedClips) if (!existingClips.has(clip)) selectedClips.delete(clip);
       const source = tracks.map(track => track.map(clip => ({ ...clip })));
-      const details = await Promise.all(source.flat().map(clip =>
-        Promise.resolve().then(() => clipDetail(clip.id)).catch(() => null)));
+      const sourceClips = source.flat();
+      const results = await Promise.all(sourceClips.map(clip =>
+        Promise.resolve().then(() => clipDetail(clip.id))
+          .then(item => ({ item }), error => ({ error }))));
       if (revision !== compositionRevision) return;
-      if (details.some(item => !item)) {
-        compositorMessage('Some clips in this layout are missing or incomplete in this browser.', true);
-      }
+      const details = results.map(result => result.item || null);
+      const failures = results.flatMap((result, index) => result.error
+        ? [`${sourceClips[index].id}: ${result.error.message || 'could not load clip'}`] : []);
+      missingClipError = failures.length
+        ? `Cannot render ${failures.length === 1 ? 'clip' : `${failures.length} clips`}: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? `; and ${failures.length - 3} more` : ''}` : '';
+      updateCompositionError();
+      if (missingClipError) compositorMessage(missingClipError, true);
       compositionItems = [];
       compositionDuration = 0;
       trackContent.replaceChildren();
@@ -1395,8 +1474,8 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
         compositionDuration = Math.max(compositionDuration, entry.end);
       }));
       const hadComposition = document.body.classList.contains('has-composition');
-      document.body.classList.toggle('has-composition', compositionItems.length > 0);
-      if (compositionItems.length) {
+      document.body.classList.toggle('has-composition', compositionItems.length > 0 || Boolean(missingClipError));
+      if (compositionItems.length || missingClipError) {
         disposeMedia(output);
         output.replaceChildren();
       }

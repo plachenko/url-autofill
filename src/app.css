@@ -60,6 +60,9 @@
     width: 100%; font: 14px/1.5 system-ui, sans-serif; }
   .image-controls button { min-height: 32px; padding: 4px 8px; font-size: 14px; border-radius: 6px; }
   .image-controls input { flex: 1; min-width: 40px; }
+  .image-render-error { max-width: min(90%, 620px); margin: 12px auto; padding: 10px 14px;
+    border: 1px solid #b96060; border-radius: 8px; background: #381d24; color: #ffe2e2;
+    font: 14px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }
   .timeline-player { display: inline-flex; flex-direction: column; max-width: 100%;
     background: #182130; white-space: normal; }
   .timeline-player video, .timeline-player img { max-width: 100%; max-height: 70vh; }
@@ -191,6 +194,11 @@
   #composition-preview img, #composition-preview video, #composition-preview canvas { width: 100%; height: 100%; max-width: none;
     max-height: none; min-width: 0; min-height: 0; grid-area: 1 / 1; object-fit: contain; }
   #composition-empty { grid-area: 1 / 1; }
+  #composition-error { grid-area: 1 / 1; align-self: end; justify-self: center; z-index: 2;
+    max-width: min(90%, 620px); max-height: 40%; margin: 12px; padding: 10px 14px;
+    overflow: auto; border: 1px solid #b96060; border-radius: 8px;
+    background: #381d24ed; color: #ffe2e2; font: 14px/1.4 system-ui, sans-serif;
+    overflow-wrap: anywhere; }
   #output .rendered-media, #output .timeline-player video, #output .timeline-player img {
     width: 100%; max-width: none; max-height: none; object-fit: contain; }
   #output .static-image, #output .animated-image, #output .timeline-player {

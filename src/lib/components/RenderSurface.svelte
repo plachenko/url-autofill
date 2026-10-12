@@ -5,5 +5,6 @@
       <canvas id="composition-image-frame" aria-label="Current animation frame" hidden>Current animation frame</canvas>
       <video id="composition-video" playsinline muted hidden></video>
       <span id="composition-empty">Add clips to a track to preview them.</span>
+      <p id="composition-error" role="alert" hidden></p>
     </div>
   </div>
