@@ -316,6 +316,11 @@
   #drawer #clip-library { margin: 16px 0; padding: 12px; }
   #websocket-panel { margin: 16px 0; padding: 12px; border: 1px solid #7085a1;
     border-radius: 8px; background: #1b2534; }
+  #websocket-panel.url-highlight { animation: websocket-highlight 3s ease-out; }
+  @keyframes websocket-highlight {
+    0%, 55% { border-color: #ffd976; box-shadow: 0 0 0 4px #ffd976aa; }
+    100% { border-color: #7085a1; box-shadow: none; }
+  }
   #websocket-panel h2 { margin: 0 0 12px; font-size: 18px; }
   #websocket-panel input { width: 100%; min-height: 42px; padding: 8px; font: inherit;
     color: #fff; background: #10151e; border: 2px solid #7085a1; border-radius: 8px; }

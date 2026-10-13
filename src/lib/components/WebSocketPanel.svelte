@@ -86,7 +86,7 @@
   }
 </script>
 
-<section id="websocket-panel" aria-label="WebSocket">
+<section id="websocket-panel" aria-label="WebSocket" tabindex="-1">
   <h2>WebSocket</h2>
   <label for="websocket-url">Server URL</label>
   <input id="websocket-url" type="url" bind:value={serverUrl} placeholder="wss://example.com/socket" spellcheck="false" autocomplete="url">

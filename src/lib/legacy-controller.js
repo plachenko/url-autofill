@@ -2418,6 +2418,17 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
       stopSpeech();
       loadMemory();
       const params = compactParams();
+      if (params.has('ws') || params.has('wsText')) {
+        const panel = document.getElementById('websocket-panel');
+        if (panel) {
+          setDrawerOpen(true);
+          panel.classList.remove('url-highlight');
+          void panel.offsetWidth;
+          panel.classList.add('url-highlight');
+          panel.focus({ preventScroll: true });
+          drawer.scrollTop += panel.getBoundingClientRect().top - drawer.getBoundingClientRect().top - 12;
+        }
+      }
       const requestedMode = (params.get('m') || '').toLowerCase();
       const mode = requestedMode === 'e' || requestedMode === 'editor' ? 'editor' :
         requestedMode === 'sp' || requestedMode === 'screenplay' ? 'screenplay' : '';
