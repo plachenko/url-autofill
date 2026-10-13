@@ -314,6 +314,16 @@
   #drawer .buttons { gap: 6px; margin: 14px 0; }
   #drawer .buttons button { min-width: 0; }
   #drawer #clip-library { margin: 16px 0; padding: 12px; }
+  #websocket-panel { margin: 16px 0; padding: 12px; border: 1px solid #7085a1;
+    border-radius: 8px; background: #1b2534; }
+  #websocket-panel h2 { margin: 0 0 12px; font-size: 18px; }
+  #websocket-panel input { width: 100%; min-height: 42px; padding: 8px; font: inherit;
+    color: #fff; background: #10151e; border: 2px solid #7085a1; border-radius: 8px; }
+  #websocket-panel textarea { margin-bottom: 10px; }
+  #websocket-panel p { min-height: 22px; margin: 8px 0; color: #c3dbff; overflow-wrap: anywhere; }
+  .websocket-actions { display: flex; gap: 8px; margin: 10px 0; }
+  .websocket-actions button { flex: 1 1 0; min-width: 0; }
+  #websocket-panel form button { width: 100%; margin-bottom: 12px; }
   .project-controls { margin-top: 16px; padding: 12px; border: 1px solid #7085a1; border-radius: 8px; }
   .project-controls label:not(:first-child) { margin-top: 12px; }
   .project-controls select, .project-controls input { width: 100%; min-height: 42px; padding: 8px;

@@ -2,6 +2,7 @@
   import MemoryBar from "./MemoryBar.svelte";
   import ClipLibrary from "./ClipLibrary.svelte";
   import HelpPanel from "./HelpPanel.svelte";
+  import WebSocketPanel from "./WebSocketPanel.svelte";
 </script>
 <div id="drawer-backdrop" hidden></div>
 <aside id="drawer" aria-label="Controls and help" hidden>
@@ -29,6 +30,7 @@
   </div>
   <label for="reply">Assistant reply</label>
   <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
+  <WebSocketPanel />
   <div class="buttons" aria-label="Manual actions">
     <button type="button" data-action="render">Run Render</button>
     <button type="button" data-action="clear">Run Clear</button>
