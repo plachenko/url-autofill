@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { websocketImageDataUrl } from '../websocket-image.js';
 
   let serverUrl = '';
   let outgoingText = '';
@@ -8,6 +9,8 @@
   let connected = false;
   let connecting = false;
   let socket = null;
+  let imageSrc = '';
+  let imageError = '';
 
   onMount(() => {
     const params = new URL(window.location.href).searchParams;
@@ -60,7 +63,11 @@
     current.onmessage = async (event) => {
       const value = event.data instanceof Blob ? await event.data.text() :
         event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data) : String(event.data);
-      if (socket === current) returnText = value;
+      if (socket === current) {
+        returnText = value;
+        imageSrc = '';
+        imageError = '';
+      }
     };
     current.onerror = () => {
       if (socket === current) status = 'WebSocket error. Check the server URL and browser console.';
@@ -84,6 +91,13 @@
       status = error.message || 'Could not send text.';
     }
   }
+
+  function renderImage() {
+    imageSrc = '';
+    imageError = '';
+    try { imageSrc = websocketImageDataUrl(returnText); }
+    catch (error) { imageError = error.message || 'Could not render the image.'; }
+  }
 </script>
 
 <section id="websocket-panel" aria-label="WebSocket" tabindex="-1">
@@ -102,4 +116,9 @@
   </form>
   <label for="websocket-return">Return text</label>
   <textarea id="websocket-return" value={returnText} placeholder="Server replies appear here" readonly></textarea>
+  <button type="button" onclick={renderImage} disabled={!returnText.trim()}>Render image</button>
+  {#if imageError}<p class="websocket-image-error" role="alert">{imageError}</p>{/if}
+  {#if imageSrc}
+    <img class="websocket-image" src={imageSrc} alt="WebSocket server reply" onerror={() => { imageSrc = ''; imageError = 'The browser could not display this image.'; }}>
+  {/if}
 </section>

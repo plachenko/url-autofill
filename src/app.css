@@ -329,6 +329,9 @@
   .websocket-actions { display: flex; gap: 8px; margin: 10px 0; }
   .websocket-actions button { flex: 1 1 0; min-width: 0; }
   #websocket-panel form button { width: 100%; margin-bottom: 12px; }
+  #websocket-panel .websocket-image-error { color: #ffb4b4; }
+  .websocket-image { display: block; max-width: 100%; max-height: 50vh; margin-top: 12px;
+    object-fit: contain; }
   .project-controls { margin-top: 16px; padding: 12px; border: 1px solid #7085a1; border-radius: 8px; }
   .project-controls label:not(:first-child) { margin-top: 12px; }
   .project-controls select, .project-controls input { width: 100%; min-height: 42px; padding: 8px;
