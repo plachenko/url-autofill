@@ -1,1 +1,1 @@
-export const websocketImageDragType = 'application/x-url-autofill-websocket-image';
+export const websocketImageDropEvent = 'urlAutofill:websocket-image-drop';
