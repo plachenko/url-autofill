@@ -16,7 +16,7 @@ The menu has a WebSocket client. Enter a `ws://` or `wss://` server URL, connect
 
 Use `?m=e` for the timeline editor or `?m=sp` for a screenplay writing view. The full values `m=editor` and `m=screenplay` work too. Both modes edit the same saved text. `m` previously meant memory; older `m=` memory links still work unless their value is one of these mode names. Use `memory=` to set or clear memory alongside a mode, for example `?m=sp&memory=Draft` or `?memory=`.
 
-In a parked Tesla, open the menu and choose **Tesla Theater fullscreen** to return to this page through YouTube's Theater redirect. YouTube may ask you to choose **Go to site**. The redirect keeps the current mode but removes other URL query values so text and media data are not sent to YouTube; content already saved in this browser is restored when the page returns. This is separate from the standard page fullscreen button and depends on Tesla and YouTube continuing to allow the redirect.
+In a parked Tesla, open the menu and choose **Tesla Theater fullscreen** to return to this page through YouTube's Theater redirect. YouTube may ask you to choose **Go to site**. The redirect keeps the current mode and Theater button preference but removes other URL query values so text and media data are not sent to YouTube. Tesla Theater may have separate browser storage, so clips and projects saved in the regular car browser may not appear there. This is separate from the standard page fullscreen button and depends on Tesla and YouTube continuing to allow the redirect.
 
 ## Saved media timeline
 

@@ -5,7 +5,8 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
 import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
 import { websocketImageDropEvent } from './websocket-image-drag.js';
 import { visibleCompositionItem } from './composition-visibility.js';
-import { canShowTeslaTheater, teslaTheaterPreferenceEvent } from './tesla-browser.js';
+import { canShowTeslaTheater, teslaTheaterPreferenceEvent,
+  teslaTheaterTransferParam } from './tesla-browser.js';
 import { removeSelectedTracks } from './track-selection.js';
 import { createPreviewSplits } from './preview-splits.js';
 
@@ -89,6 +90,7 @@ import { createPreviewSplits } from './preview-splits.js';
       if (mode === 'e' || mode === 'editor' || mode === 'sp' || mode === 'screenplay') {
         target.searchParams.set('m', mode);
       }
+      target.searchParams.set(teslaTheaterTransferParam, '1');
       const theater = new URL('https://www.youtube.com/redirect');
       theater.searchParams.set('q', target.href);
       window.location.assign(theater.href);

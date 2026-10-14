@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { canShowTeslaTheater, hasTeslaTheaterPreference, isTeslaCarBrowser,
-    teslaTheaterPreferenceEvent, teslaTheaterPreferenceKey } from '../tesla-browser.js';
+  import { adoptTeslaTheaterLink, canShowTeslaTheater, hasTeslaTheaterPreference,
+    isTeslaCarBrowser, teslaTheaterPreferenceEvent, teslaTheaterPreferenceKey } from '../tesla-browser.js';
   import MemoryBar from "./MemoryBar.svelte";
   import ClipLibrary from "./ClipLibrary.svelte";
   import HelpPanel from "./HelpPanel.svelte";
@@ -12,6 +12,12 @@
   let teslaTheaterPreference = $state(false);
   let browserUserAgent = $state('Loading…');
   onMount(() => {
+    const cleanUrl = adoptTeslaTheaterLink(window.location.href, window.localStorage);
+    if (cleanUrl) {
+      try { window.history.replaceState(null, '', cleanUrl); }
+      catch { /* The preference is already stored for this browser. */ }
+      window.dispatchEvent(new Event(teslaTheaterPreferenceEvent));
+    }
     browserUserAgent = navigator.userAgent || '(empty)';
     teslaBrowser = isTeslaCarBrowser(browserUserAgent);
     teslaTheaterPreference = hasTeslaTheaterPreference(window.localStorage);
