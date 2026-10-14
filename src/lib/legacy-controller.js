@@ -5,7 +5,7 @@ import { createProject, deleteProject, listProjects, renameProject, switchProjec
 import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
 import { websocketImageDropEvent } from './websocket-image-drag.js';
 import { visibleCompositionItem } from './composition-visibility.js';
-import { isTeslaCarBrowser } from './tesla-browser.js';
+import { canShowTeslaTheater, teslaTheaterPreferenceEvent } from './tesla-browser.js';
 import { removeSelectedTracks } from './track-selection.js';
 import { createPreviewSplits } from './preview-splits.js';
 
@@ -73,10 +73,14 @@ import { createPreviewSplits } from './preview-splits.js';
     drawerFullscreenButton.addEventListener('click', togglePageFullscreen);
     const teslaFullscreenButton = document.getElementById('tesla-fullscreen');
     const teslaTheaterButton = document.getElementById('tesla-theater-button');
-    const teslaSupported = isTeslaCarBrowser(navigator.userAgent) &&
-      /^https?:$/.test(window.location.protocol);
-    teslaFullscreenButton.disabled = !teslaSupported;
-    teslaTheaterButton.disabled = !teslaSupported;
+    function syncTeslaTheater() {
+      const teslaSupported = canShowTeslaTheater(navigator.userAgent, window.localStorage) &&
+        /^https?:$/.test(window.location.protocol);
+      teslaFullscreenButton.disabled = !teslaSupported;
+      teslaTheaterButton.disabled = !teslaSupported;
+    }
+    syncTeslaTheater();
+    window.addEventListener(teslaTheaterPreferenceEvent, syncTeslaTheater);
     function openTeslaTheater() {
       const target = new URL(window.location.href);
       const mode = target.searchParams.get('m')?.toLowerCase();

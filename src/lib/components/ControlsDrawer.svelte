@@ -1,17 +1,34 @@
 <script>
   import { onMount } from 'svelte';
-  import { isTeslaCarBrowser } from '../tesla-browser.js';
+  import { canShowTeslaTheater, hasTeslaTheaterPreference, isTeslaCarBrowser,
+    teslaTheaterPreferenceEvent, teslaTheaterPreferenceKey } from '../tesla-browser.js';
   import MemoryBar from "./MemoryBar.svelte";
   import ClipLibrary from "./ClipLibrary.svelte";
   import HelpPanel from "./HelpPanel.svelte";
   import WebSocketPanel from "./WebSocketPanel.svelte";
 
   let teslaBrowser = $state(false);
+  let teslaTheaterEnabled = $state(false);
+  let teslaTheaterPreference = $state(false);
   let browserUserAgent = $state('Loading…');
   onMount(() => {
     browserUserAgent = navigator.userAgent || '(empty)';
     teslaBrowser = isTeslaCarBrowser(browserUserAgent);
+    teslaTheaterPreference = hasTeslaTheaterPreference(window.localStorage);
+    teslaTheaterEnabled = canShowTeslaTheater(browserUserAgent, window.localStorage);
   });
+  function changeTeslaTheaterPreference(event) {
+    try {
+      if (event.currentTarget.checked) window.localStorage.setItem(teslaTheaterPreferenceKey, '1');
+      else window.localStorage.removeItem(teslaTheaterPreferenceKey);
+    } catch {
+      event.currentTarget.checked = teslaTheaterPreference;
+      return;
+    }
+    teslaTheaterPreference = event.currentTarget.checked;
+    teslaTheaterEnabled = teslaBrowser || teslaTheaterPreference;
+    window.dispatchEvent(new Event(teslaTheaterPreferenceEvent));
+  }
 </script>
 <div id="drawer-backdrop" hidden></div>
 <aside id="drawer" aria-label="Controls and help" hidden>
@@ -20,7 +37,7 @@
     <button id="drawer-fullscreen" type="button" hidden>Enter fullscreen</button>
     <button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
   </div>
-  <div class="drawer-view-actions" hidden={!teslaBrowser}>
+  <div class="drawer-view-actions" hidden={!teslaTheaterEnabled}>
     <button id="tesla-fullscreen" type="button">Tesla Theater fullscreen</button>
   </div>
   <div class="drawer-view-actions" aria-label="Modes">
@@ -32,6 +49,12 @@
     <summary>Browser debug</summary>
     <p>Tesla browser detected: {teslaBrowser ? 'Yes' : 'No'}</p>
     <p>User agent: <span class="browser-user-agent">{browserUserAgent}</span></p>
+    {#if !teslaBrowser}
+      <label class="tesla-theater-preference">
+        <input type="checkbox" checked={teslaTheaterPreference} onchange={changeTeslaTheaterPreference}>
+        This is my Tesla browser; show Theater button
+      </label>
+    {/if}
   </details>
   <MemoryBar />
   <label for="text">You said</label>
@@ -96,4 +119,7 @@
   .browser-debug summary { cursor: pointer; }
   .browser-debug p { margin: 8px 0 0; font-size: 13px; }
   .browser-user-agent { user-select: text; }
+  .tesla-theater-preference { display: flex; align-items: center; gap: 8px;
+    margin: 12px 0 0; font-size: 13px; }
+  .tesla-theater-preference input { width: 18px; height: 18px; flex: 0 0 auto; }
 </style>

@@ -1,11 +1,14 @@
 <script>
   import { onMount } from "svelte";
   import { base } from "$app/paths";
-  import { isTeslaCarBrowser } from "../tesla-browser.js";
+  import { canShowTeslaTheater, teslaTheaterPreferenceEvent } from "../tesla-browser.js";
 
   let teslaBrowser = $state(false);
   onMount(() => {
-    teslaBrowser = isTeslaCarBrowser(navigator.userAgent);
+    const refresh = () => { teslaBrowser = canShowTeslaTheater(navigator.userAgent, window.localStorage); };
+    refresh();
+    window.addEventListener(teslaTheaterPreferenceEvent, refresh);
+    return () => window.removeEventListener(teslaTheaterPreferenceEvent, refresh);
   });
 </script>
 
