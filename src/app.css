@@ -1,3 +1,8 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@layer components {
   :root { color-scheme: dark; font: 17px/1.45 system-ui, sans-serif; background: #10151e; color: #f3f6fc; }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; }
@@ -31,8 +36,7 @@
   code { overflow-wrap: anywhere; color: #e5edff; }
   li { margin-bottom: 8px; }
   a { color: #a9ceff; }
-  #page-fullscreen { position: fixed; right: max(16px, env(safe-area-inset-right));
-    bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10001;
+  #page-fullscreen {  z-index: 10001;
     width: 52px; min-height: 52px; padding: 8px; font-size: 26px;
     color: #b8c8d8; background: #182130e6; border: 1px solid #7085a1; }
   #minimal-toggle { position: fixed; left: max(16px, env(safe-area-inset-left));
@@ -110,6 +114,25 @@
   .track-heading { position: sticky; left: 0; z-index: 8; width: 88px; flex: 0 0 88px;
     font-weight: 700; padding: 12px 0; background: #284e82;
     box-shadow: 4px 0 8px #10151e99; }
+  .track-heading:not(.timeline-zoom) { min-height: 32px; cursor: grab; touch-action: none;
+    transition: padding-block .24s ease; }
+  .selected-track .track-heading { color: #10151e; background: #70d8ff;
+    border-color: #b8edff; box-shadow: 0 0 0 2px #70d8ff; }
+  .selected-track .track-lane { border-color: #70d8ff; background: #15283a; }
+  .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .track-heading { padding-block: 4px; }
+  .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .track-lane { min-height: 32px; }
+  .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .clip-tile { opacity: 0; pointer-events: none; }
+  .collapsed-clip { position: absolute; top: 5px; height: 20px; opacity: 0;
+    padding: 1px 5px; overflow: hidden; border: 1px solid #7799cb;
+    border-radius: 4px; background: #284e82; color: #f3f6fc;
+    font-size: 11px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis;
+    pointer-events: none; transition: opacity .18s ease; }
+  .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .collapsed-clip { opacity: 1; }
+  .collapsed-clip.selected { border-color: #70d8ff; box-shadow: inset 0 0 0 1px #70d8ff; }
+  .collapsed-clip.under-playhead { border-color: #ffd976; box-shadow: inset 0 0 0 1px #ffd976; }
+  .track-row.track-dragging { position: relative; z-index: 11; }
+  .track-dragging .track-heading { cursor: grabbing; opacity: .8; }
+  .track-drop-target .track-heading { outline: 2px solid #70d8ff; outline-offset: -2px; }
   .timeline-zoom { position: sticky; left: 0; z-index: 9; display: flex;
     align-items: center; justify-content: center; gap: 2px; padding: 2px 0;
     background: #182130; user-select: none; -webkit-user-select: none; }
@@ -118,9 +141,12 @@
   .timeline-zoom button:disabled { opacity: .4; cursor: default; }
   .timeline-zoom span { min-width: 26px; font-size: 11px; text-align: center; }
   .track-lane { position: relative; flex: 1 0 auto; min-width: 200px; min-height: 108px;
-    background: #10151e; border: 1px dashed #7085a1; border-radius: 8px; }
-  .track-ruler-lane { position: relative; flex: 1 0 auto; min-height: 32px;
-    background: #10151e; border-bottom: 1px solid #7085a1; cursor: crosshair; touch-action: pan-x;
+    background: #10151e; border: 1px dashed #7085a1; border-radius: 8px; cursor: crosshair; }
+  .track-row[data-track] .track-lane { overflow: clip; transition: min-height .24s ease; }
+  .timeline-selection-box { position: absolute; z-index: 10; pointer-events: none;
+    border: 1px solid #70d8ff; background: #70d8ff33; border-radius: 3px; }
+  .track-ruler-lane { position: relative; flex: 1 0 auto; min-height: 48px;
+    background: #10151e; border-bottom: 1px solid #7085a1; cursor: crosshair; touch-action: none;
     user-select: none; -webkit-user-select: none; }
   .track-ruler-tick { position: absolute; top: 0; height: 100%; padding: 16px 0 0 4px;
     color: #b8c8e0; font-size: 10px; line-height: 12px; white-space: nowrap;
@@ -133,7 +159,7 @@
   .track-ruler-tick.is-ten::before { width: 2px; height: 15px; background: #ffd976; }
   #track-playhead { position: absolute; top: 0; bottom: 0; width: 2px;
     pointer-events: none; z-index: 4; opacity: .2; transition: opacity .15s ease; }
-  #track-playhead::before { content: ''; position: absolute; top: 32px; bottom: 0; left: 0;
+  #track-playhead::before { content: ''; position: absolute; top: 48px; bottom: 0; left: 0;
     width: 2px; background: #ffd976; box-shadow: 0 0 5px #000; }
   #track-playhead:hover, #track-playhead.selected, #track-playhead:focus-within { opacity: 1; }
   #track-playhead button { position: absolute; top: 0; left: -12px; width: 26px;
@@ -147,7 +173,8 @@
   #render-frame { position: absolute; top: 0; bottom: 0; width: 3px; z-index: 6;
     background: #ff4646; box-shadow: 0 0 0 1px #10151e, 0 0 8px #ff4646; pointer-events: none; }
   .clip-tile { position: absolute; top: 0; min-height: 106px; overflow: hidden;
-    background: #284e82; border: 1px solid #7799cb; border-radius: 7px; }
+    background: #284e82; border: 1px solid #7799cb; border-radius: 7px;
+    transition: opacity .18s ease; }
   .clip-tile.under-playhead::after { content: ''; position: absolute; inset: 0; z-index: 8;
     border: 3px solid #ffd976; border-radius: 6px; pointer-events: none; }
   .clip-tile.selected { border-color: #70d8ff; box-shadow: 0 0 0 2px #70d8ff; }
@@ -165,6 +192,7 @@
   .clip-trim.right { right: 0; border-radius: 0 6px 6px 0; }
   .clip-trim:hover, .clip-trim:focus-visible { background: #ffd976; }
   #snap-toggle[aria-pressed="true"] { background: #49682c; border-color: #a9db78; }
+  #auto-expand-track[aria-pressed="true"] { background: #49682c; border-color: #a9db78; }
   #timeline-lock[aria-pressed="true"] { background: #685327; border-color: #ffd976; }
   .clip-tile button { position: absolute; right: 2px; top: 2px; z-index: 7;
     width: 26px; min-height: 26px !important; padding: 0 !important; }
@@ -258,6 +286,7 @@
   #track-list { flex: 1 1 auto; min-height: 0; overflow: auto;
     scrollbar-color: #7085a1 #10151e; touch-action: pan-x pan-y; }
   #track-list.timeline-locked { cursor: grab; touch-action: none; }
+  #track-list.timeline-locked .track-lane { cursor: grab; }
   #track-list.websocket-image-drop-target .track-lane { border-color: #ffd976; background: #263040; }
   #track-list.timeline-locked:active { cursor: grabbing; }
   #track-list.timeline-locked .clip-tile,
@@ -281,8 +310,7 @@
   body.screenplay-mode #screenplay-workspace { display: block; }
   body.screenplay-mode #render-surface, body.screenplay-mode #compositor,
   body.screenplay-mode #minimal-toggle { display: none; }
-  #menu-toggle, #page-fullscreen, #tesla-theater-button { position: fixed; top: max(12px, env(safe-area-inset-top));
-    bottom: auto; z-index: 1001; width: 44px; min-height: 44px; padding: 4px;
+  #menu-toggle, #page-fullscreen, #tesla-theater-button {  z-index: 1001; width: 44px; min-height: 44px; padding: 4px;
     border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
     font-size: 24px; }
   #menu-toggle svg, #page-fullscreen svg, #menu-close svg { display: block; width: 22px;
@@ -363,8 +391,11 @@
     border-color: #b26d74; }
   .drawer-timeline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
   .drawer-timeline-actions button { flex: 1 1 150px; }
+  #delete-tracks { background: #75393f; border-color: #b26d74; }
+  #delete-tracks:disabled { opacity: .45; cursor: default; }
   body.browser-timeline-zoom #track-list,
   body.browser-timeline-zoom #track-list * { touch-action: auto; }
+  body.browser-timeline-zoom #track-list .track-ruler-lane { touch-action: none; }
   body.browser-timeline-zoom #track-list.timeline-locked { touch-action: none; }
   #drawer details { margin-top: 12px; }
   [hidden] { display: none !important; }
@@ -378,6 +409,10 @@
     #timeline-image-id { flex-basis: 70px; }
     #timeline-image-form input { font-size: 12px; }
     #composition-time { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track-heading:not(.timeline-zoom), .track-row[data-track] .track-lane,
+    .clip-tile, .collapsed-clip { transition: none; }
   }
 
 /* PaneForge owns the preview and timeline heights. */
@@ -393,3 +428,4 @@ body.minimal .timeline-pane, body.minimal .pane-resizer,
 body.screenplay-mode .timeline-pane, body.screenplay-mode .pane-resizer { display: none !important; }
 body.minimal .stage-pane, body.screenplay-mode .stage-pane { flex: 1 1 100% !important; }
 body.render-focus .pane-resizer { display: none; }
+}

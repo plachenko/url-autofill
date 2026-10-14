@@ -1,8 +1,13 @@
 <script>
+  import { onMount } from 'svelte';
+  import { isTeslaCarBrowser } from '../tesla-browser.js';
   import MemoryBar from "./MemoryBar.svelte";
   import ClipLibrary from "./ClipLibrary.svelte";
   import HelpPanel from "./HelpPanel.svelte";
   import WebSocketPanel from "./WebSocketPanel.svelte";
+
+  let teslaBrowser = $state(false);
+  onMount(() => { teslaBrowser = isTeslaCarBrowser(navigator.userAgent); });
 </script>
 <div id="drawer-backdrop" hidden></div>
 <aside id="drawer" aria-label="Controls and help" hidden>
@@ -11,7 +16,7 @@
     <button id="drawer-fullscreen" type="button" hidden>Enter fullscreen</button>
     <button id="minimal-toggle" type="button" aria-pressed="false">Minimal view</button>
   </div>
-  <div class="drawer-view-actions">
+  <div class="drawer-view-actions" hidden={!teslaBrowser}>
     <button id="tesla-fullscreen" type="button">Tesla Theater fullscreen</button>
   </div>
   <div class="drawer-view-actions" aria-label="Modes">
@@ -25,6 +30,7 @@
   <ClipLibrary />
   <div class="drawer-timeline-actions" aria-label="Timeline actions">
     <button id="add-track" type="button">Add track</button>
+    <button id="delete-tracks" type="button" disabled>Delete tracks</button>
     <button id="position-url" type="button">Put position in URL</button>
     <button id="browser-zoom-toggle" type="button" aria-pressed="false">Browser zoom: Off</button>
   </div>

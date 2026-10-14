@@ -4,6 +4,9 @@ import { clearAllAppStorage, createSessionBackup, restoreSessionBackup } from '.
 import { createProject, deleteProject, listProjects, renameProject, switchProject } from './project-store.js';
 import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
 import { websocketImageDropEvent } from './websocket-image-drag.js';
+import { visibleCompositionItem } from './composition-visibility.js';
+import { isTeslaCarBrowser } from './tesla-browser.js';
+import { removeSelectedTracks } from './track-selection.js';
 
   'use strict';
   export function initialize() {
@@ -69,7 +72,8 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
     drawerFullscreenButton.addEventListener('click', togglePageFullscreen);
     const teslaFullscreenButton = document.getElementById('tesla-fullscreen');
     const teslaTheaterButton = document.getElementById('tesla-theater-button');
-    const teslaSupported = /^https?:$/.test(window.location.protocol);
+    const teslaSupported = isTeslaCarBrowser(navigator.userAgent) &&
+      /^https?:$/.test(window.location.protocol);
     teslaFullscreenButton.disabled = !teslaSupported;
     teslaTheaterButton.disabled = !teslaSupported;
     function openTeslaTheater() {
@@ -929,6 +933,19 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
     const timelineToggle = document.getElementById('timeline-toggle');
     const pinPreviewButton = document.getElementById('pin-preview');
     const snapToggle = document.getElementById('snap-toggle');
+    const autoExpandTrackButton = document.getElementById('auto-expand-track');
+    const autoExpandTrackKey = 'urlAutofill.autoExpandTrack.v1';
+    let autoExpandTrack = false;
+    try { autoExpandTrack = window.localStorage.getItem(autoExpandTrackKey) === '1'; }
+    catch (error) { /* Keep automatic expansion off without browser storage. */ }
+    autoExpandTrackButton.setAttribute('aria-pressed', String(autoExpandTrack));
+    autoExpandTrackButton.addEventListener('click', () => {
+      autoExpandTrack = !autoExpandTrack;
+      autoExpandTrackButton.setAttribute('aria-pressed', String(autoExpandTrack));
+      try { window.localStorage.setItem(autoExpandTrackKey, autoExpandTrack ? '1' : '0'); }
+      catch (error) { /* Automatic expansion still works without browser storage. */ }
+      syncCompositionPreview();
+    });
     const timelineLockButton = document.getElementById('timeline-lock');
     const timelineLockKey = 'urlAutofill.timelineLock.v1';
     let manualTimelineLock = false;
@@ -1047,6 +1064,9 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
     let activeTrack = 0;
     let compositionItems = [];
     const selectedClips = new Set();
+    const selectedTracks = new Set();
+    let trackSelectionAnchor = null;
+    let pendingTrackFocus = null;
     let compositionDuration = 0;
     let compositionPlaying = false;
     let compositionFrame = 0;
@@ -1055,6 +1075,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
     let rulerResizeObserver = null;
     let timelineGestureController = null;
     let visibleItem = null;
+    let autoExpandedTrackRow = null;
     let missingClipError = '';
     let imageRenderError = '';
     let imageLoadFailed = false;
@@ -1080,6 +1101,11 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
     });
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
+    const compactClipInset = 5;
+    function positionCompactTile(compactTile, tile) {
+      compactTile.style.left = `${parseFloat(tile.style.left) + compactClipInset}px`;
+      compactTile.style.width = `${parseFloat(tile.style.width) - 2 * compactClipInset}px`;
+    }
     let pendingClipFocus = null;
     const clipDetails = new Map();
     compositionVideo.addEventListener('ended', () => {
@@ -1267,12 +1293,18 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
       saveSession(true);
     }
     function syncCompositionPreview(seek = false) {
-      const active = compositionItems.filter(entry =>
-        session.playheadSeconds >= entry.start && session.playheadSeconds < entry.end)
-        .sort((a, b) => b.track - a.track || b.start - a.start)[0] || null;
+      const active = visibleCompositionItem(compositionItems, session.playheadSeconds);
+      const expandedRow = autoExpandTrack && active
+        ? trackContent.querySelector(`.track-row[data-track="${active.track}"]`) : null;
+      if (autoExpandedTrackRow !== expandedRow) {
+        autoExpandedTrackRow?.classList.remove('auto-expanded-track');
+        expandedRow?.classList.add('auto-expanded-track');
+        autoExpandedTrackRow = expandedRow;
+      }
       compositionEmpty.hidden = Boolean(active) || Boolean(missingClipError);
       if (active !== visibleItem) {
         visibleItem?.tile?.classList.remove('under-playhead');
+        visibleItem?.compactTile?.classList.remove('under-playhead');
         visibleItem?.tile?.removeAttribute('aria-current');
         disposeImagePreview();
         compositionVideo.pause();
@@ -1284,6 +1316,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
         imageDecodeFailure = null;
         updateCompositionError();
         active?.tile?.classList.add('under-playhead');
+        active?.compactTile?.classList.add('under-playhead');
         active?.tile?.setAttribute('aria-current', 'true');
         compositionImage.hidden = !active || active.item.type !== 'image';
         compositionVideo.hidden = !active || active.item.type !== 'video';
@@ -1344,12 +1377,16 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
             syncCompositionPreview();
           });
       }
-      if (active?.tile) {
-        active.tile.append(renderFrameMarker);
+      const markerTile = active && (selectedTracks.has(tracks[active.track]) || autoExpandTrack
+        ? active.tile : active.compactTile);
+      if (markerTile) {
+        markerTile.append(renderFrameMarker);
         const frameOffset = Math.max(0, Math.min(active.duration,
           session.renderFrameSeconds - active.start));
-        renderFrameMarker.style.left = `${Math.max(0, Math.min(active.tile.clientWidth - 2,
-          frameOffset * timelineScale))}px`;
+        const markerOffset = frameOffset * timelineScale -
+          (markerTile === active.compactTile ? compactClipInset : 0);
+        renderFrameMarker.style.left = `${Math.max(0, Math.min(markerTile.clientWidth - 2,
+          markerOffset))}px`;
       } else renderFrameMarker.remove();
       compositionScrubber.value = String(session.playheadSeconds);
       compositionScrubber.style.setProperty('--progress', `${compositionDuration ?
@@ -1439,9 +1476,38 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
       if (tracks.length >= 8) { compositorMessage('The compositor supports up to 8 tracks.', true); return; }
       tracks.push([]);
       activeTrack = tracks.length - 1;
+      selectedTracks.clear();
+      selectedTracks.add(tracks[activeTrack]);
+      trackSelectionAnchor = tracks[activeTrack];
       saveTracks();
       void refreshCompositor();
     });
+    const deleteTracksButton = document.getElementById('delete-tracks');
+    function syncTrackSelection() {
+      trackContent.querySelectorAll('.track-row[data-track]').forEach(row => {
+        const selected = selectedTracks.has(tracks[Number(row.dataset.track)]);
+        row.classList.toggle('selected-track', selected);
+        row.querySelector('.track-heading')?.setAttribute('aria-pressed', String(selected));
+      });
+      deleteTracksButton.disabled = selectedTracks.size === 0;
+      deleteTracksButton.textContent = selectedTracks.size
+        ? `Delete ${selectedTracks.size} track${selectedTracks.size === 1 ? '' : 's'}` : 'Delete tracks';
+    }
+    function deleteSelectedTracks() {
+      if (!selectedTracks.size) return;
+      const count = selectedTracks.size;
+      const result = removeSelectedTracks(tracks, selectedTracks, activeTrack);
+      tracks = result.tracks;
+      activeTrack = result.activeIndex;
+      selectedTracks.clear();
+      trackSelectionAnchor = null;
+      selectedClips.clear();
+      saveTracks();
+      syncTrackSelection();
+      void refreshCompositor();
+      compositorMessage(`Deleted ${count} track${count === 1 ? '' : 's'}.`);
+    }
+    deleteTracksButton.addEventListener('click', deleteSelectedTracks);
     document.getElementById('position-url').addEventListener('click', () => {
       if (!compositionItems.length) { compositorMessage('Add a complete clip before sharing a position.', true); return; }
       const url = new URL(window.location.href);
@@ -1476,6 +1542,8 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
       timelineGestureController?.abort();
       const existingClips = new Set(tracks.flat());
       for (const clip of selectedClips) if (!existingClips.has(clip)) selectedClips.delete(clip);
+      for (const track of selectedTracks) if (!tracks.includes(track)) selectedTracks.delete(track);
+      if (trackSelectionAnchor && !tracks.includes(trackSelectionAnchor)) trackSelectionAnchor = null;
       const source = tracks.map(track => track.map(clip => ({ ...clip })));
       const sourceClips = source.flat();
       const results = await Promise.all(sourceClips.map(clip =>
@@ -1489,9 +1557,52 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
         ? `Cannot render ${failures.length === 1 ? 'clip' : `${failures.length} clips`}: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? `; and ${failures.length - 3} more` : ''}` : '';
       updateCompositionError();
       if (missingClipError) compositorMessage(missingClipError, true);
+      const previousTrackAppearance = new Map();
+      trackContent.querySelectorAll('.track-row[data-track]').forEach(row => {
+        if (!row.trackRef) return;
+        const heading = row.querySelector('.track-heading');
+        const lane = row.querySelector('.track-lane');
+        const fullClip = row.querySelector('.clip-tile');
+        const compactClip = row.querySelector('.collapsed-clip');
+        const headingStyle = window.getComputedStyle(heading);
+        const expanded = row.classList.contains('selected-track') ||
+          row.classList.contains('auto-expanded-track');
+        previousTrackAppearance.set(row.trackRef, {
+          height: lane.getBoundingClientRect().height,
+          paddingTop: headingStyle.paddingTop,
+          paddingBottom: headingStyle.paddingBottom,
+          fullOpacity: fullClip ? window.getComputedStyle(fullClip).opacity : expanded ? '1' : '0',
+          compactOpacity: compactClip ? window.getComputedStyle(compactClip).opacity : expanded ? '0' : '1'
+        });
+      });
       compositionItems = [];
       compositionDuration = 0;
       trackContent.replaceChildren();
+      function syncSelection() {
+        compositionItems.forEach(value => {
+          if (!value.tile) return;
+          const chosen = selectedClips.has(value.clipRef);
+          value.tile.classList.toggle('selected', chosen);
+          value.compactTile?.classList.toggle('selected', chosen);
+          value.tile.querySelector('.clip-select')?.setAttribute('aria-pressed', String(chosen));
+        });
+      }
+      function announceSelection() {
+        compositorMessage(`${selectedClips.size} clip${selectedClips.size === 1 ? '' : 's'} selected. Drag a selected clip to move the group.`);
+      }
+      function moveTrack(from, to) {
+        if (from === to || to < 0 || to >= tracks.length) return false;
+        const [track] = tracks.splice(from, 1);
+        tracks.splice(to, 0, track);
+        if (activeTrack === from) activeTrack = to;
+        else if (from < activeTrack && to >= activeTrack) activeTrack--;
+        else if (from > activeTrack && to <= activeTrack) activeTrack++;
+        pendingTrackFocus = to;
+        saveTracks();
+        void refreshCompositor();
+        compositorMessage(`Moved track ${from + 1} to position ${to + 1}.`);
+        return true;
+      }
       let detailIndex = 0;
       const trackDetails = source.map(track => track.map(() => details[detailIndex++]));
       let focusGrip = null;
@@ -1505,6 +1616,9 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
         compositionItems.push(entry);
         compositionDuration = Math.max(compositionDuration, entry.end);
       }));
+      const openingTrack = autoExpandTrack
+        ? visibleCompositionItem(compositionItems, session.playheadSeconds)?.track : null;
+      const animatedRows = [];
       const hadComposition = document.body.classList.contains('has-composition');
       document.body.classList.toggle('has-composition', compositionItems.length > 0 || Boolean(missingClipError));
       if (compositionItems.length || missingClipError) {
@@ -1573,6 +1687,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
             if (!entry.tile) continue;
             entry.tile.style.left = `${Math.round(entry.start * timelineScale)}px`;
             entry.tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
+            if (entry.compactTile) positionCompactTile(entry.compactTile, entry.tile);
           }
           syncCompositionPreview();
         }
@@ -1588,7 +1703,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
       zoomOut.addEventListener('click', () => changeTimelineZoom(-10));
       zoomIn.addEventListener('click', () => changeTimelineZoom(10));
       let pinch = null;
-      let pendingTouchSeek = null;
+      let rulerSeekPointer = null;
       let suppressTouchSeek = false;
       let suppressDragForPinch = false;
       let activePan = null;
@@ -1617,7 +1732,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
         activePan = null;
         suppressTouchSeek = true;
         suppressDragForPinch = true;
-        pendingTouchSeek = null;
+        rulerSeekPointer = null;
         if (browserZoomEnabled || timelineTouches.length !== 2) return;
         event.preventDefault();
         const { distance, x } = pinchGeometry(timelineTouches);
@@ -1643,7 +1758,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
         { signal: timelineGestureController.signal });
       trackList.addEventListener('pointerdown', event => {
         if (!timelineLocked() || event.button !== 0 || touchTimelineLock ||
-            event.target.closest('button, input')) return;
+            event.target.closest('button, input, .track-ruler-lane, .timeline-zoom')) return;
         event.preventDefault();
         trackList.setPointerCapture(event.pointerId);
         activePan = { id: event.pointerId, x: event.clientX, y: event.clientY,
@@ -1659,6 +1774,75 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
       };
       trackList.addEventListener('pointerup', endPan, { signal: timelineGestureController.signal });
       trackList.addEventListener('pointercancel', endPan, { signal: timelineGestureController.signal });
+      let boxSelection = null;
+      const contentPoint = event => {
+        const bounds = trackContent.getBoundingClientRect();
+        return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+      };
+      trackList.addEventListener('pointerdown', event => {
+        if (timelineLocked() || event.button !== 0 || event.pointerType === 'touch' ||
+            event.target.closest('.clip-tile, .track-heading') ||
+            !(event.target.closest('.track-lane, .track-row') || event.target === trackContent)) return;
+        event.preventDefault();
+        trackList.setPointerCapture(event.pointerId);
+        boxSelection = { id: event.pointerId, start: contentPoint(event),
+          previous: new Set(selectedClips), additive: event.shiftKey || event.ctrlKey || event.metaKey,
+          overlay: null };
+      }, { signal: timelineGestureController.signal });
+      trackList.addEventListener('pointermove', event => {
+        if (!boxSelection || event.pointerId !== boxSelection.id) return;
+        const { start, previous, additive } = boxSelection;
+        const end = contentPoint(event);
+        if (!boxSelection.overlay && Math.hypot(end.x - start.x, end.y - start.y) < 4) return;
+        if (!boxSelection.overlay) {
+          boxSelection.overlay = document.createElement('div');
+          boxSelection.overlay.className = 'timeline-selection-box';
+          trackContent.append(boxSelection.overlay);
+        }
+        const left = Math.min(start.x, end.x);
+        const top = Math.min(start.y, end.y);
+        const right = Math.max(start.x, end.x);
+        const bottom = Math.max(start.y, end.y);
+        Object.assign(boxSelection.overlay.style, {
+          left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px`
+        });
+        selectedClips.clear();
+        if (additive) previous.forEach(clip => selectedClips.add(clip));
+        const contentBounds = trackContent.getBoundingClientRect();
+        for (const entry of compositionItems) {
+          if (!entry.tile) continue;
+          const visibleTile = selectedTracks.has(tracks[entry.track]) ||
+            (autoExpandTrack && visibleItem?.track === entry.track)
+            ? entry.tile : entry.compactTile;
+          const bounds = visibleTile.getBoundingClientRect();
+          if (bounds.left - contentBounds.left < right && bounds.right - contentBounds.left > left &&
+              bounds.top - contentBounds.top < bottom && bounds.bottom - contentBounds.top > top) {
+            selectedClips.add(entry.clipRef);
+          }
+        }
+        syncSelection();
+      }, { signal: timelineGestureController.signal });
+      const finishBoxSelection = event => {
+        if (!boxSelection || event.pointerId !== boxSelection.id) return;
+        const { overlay, previous, additive } = boxSelection;
+        overlay?.remove();
+        if (event.type === 'pointercancel') {
+          selectedClips.clear();
+          previous.forEach(clip => selectedClips.add(clip));
+          syncSelection();
+        } else {
+          if (!overlay && !additive) {
+            selectedClips.clear();
+            syncSelection();
+          }
+          announceSelection();
+        }
+        boxSelection = null;
+      };
+      trackList.addEventListener('pointerup', finishBoxSelection,
+        { signal: timelineGestureController.signal });
+      trackList.addEventListener('pointercancel', finishBoxSelection,
+        { signal: timelineGestureController.signal });
       trackList.addEventListener('gesturestart', event => {
         if (!browserZoomEnabled) event.preventDefault();
       }, gestureOptions);
@@ -1666,22 +1850,30 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
         if (!browserZoomEnabled) event.preventDefault();
       }, gestureOptions);
       rulerLane.addEventListener('pointerdown', event => {
-        if (timelineLocked()) return;
-        if (event.pointerType === 'touch') {
-          pendingTouchSeek = event.pointerId;
-          suppressTouchSeek = false;
-          return;
-        }
+        if (timelineLocked() || event.button !== 0 ||
+            (event.pointerType === 'touch' && !event.isPrimary)) return;
+        rulerSeekPointer = { id: event.pointerId, startX: event.clientX,
+          startY: event.clientY, touch: event.pointerType === 'touch' };
+        suppressTouchSeek = false;
+        rulerLane.setPointerCapture(event.pointerId);
+        if (!rulerSeekPointer.touch) setCompositionTime(
+          (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
+      });
+      rulerLane.addEventListener('pointermove', event => {
+        if (!rulerSeekPointer || event.pointerId !== rulerSeekPointer.id ||
+            suppressTouchSeek || timelineLocked()) return;
+        if (rulerSeekPointer.touch &&
+            Math.hypot(event.clientX - rulerSeekPointer.startX,
+              event.clientY - rulerSeekPointer.startY) < 4) return;
         setCompositionTime((event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       });
       rulerLane.addEventListener('pointerup', event => {
-        if (timelineLocked()) return;
-        if (event.pointerId !== pendingTouchSeek) return;
-        pendingTouchSeek = null;
-        if (!suppressTouchSeek) setCompositionTime(
+        if (event.pointerId !== rulerSeekPointer?.id) return;
+        rulerSeekPointer = null;
+        if (!suppressTouchSeek && !timelineLocked()) setCompositionTime(
           (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       });
-      rulerLane.addEventListener('pointercancel', () => { pendingTouchSeek = null; });
+      rulerLane.addEventListener('pointercancel', () => { rulerSeekPointer = null; });
       ruler.append(rulerLabel, rulerLane);
       trackContent.append(ruler);
       trackList.onscroll = renderRulerTicks;
@@ -1750,22 +1942,104 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
       source.forEach((track, trackIndex) => {
         const row = document.createElement('div');
         row.className = 'track-row';
+        row.dataset.track = String(trackIndex);
+        row.trackRef = tracks[trackIndex];
+        const startsExpanded = selectedTracks.has(row.trackRef) || trackIndex === openingTrack;
+        const appearance = previousTrackAppearance.get(row.trackRef) ||
+          (startsExpanded ? { height: 32, paddingTop: '4px', paddingBottom: '4px',
+            fullOpacity: '0', compactOpacity: '1' } : null);
         const heading = document.createElement('button');
         heading.type = 'button';
         heading.className = 'track-heading';
         heading.textContent = `Track ${trackIndex + 1}${trackIndex === activeTrack ? ' ✓' : ''}`;
-        heading.setAttribute('aria-label', `Add new clips to track ${trackIndex + 1}`);
-        heading.addEventListener('click', () => { activeTrack = trackIndex; void refreshCompositor(); refreshClipList(); });
+        heading.setAttribute('aria-label', `Track ${trackIndex + 1}; tap to select, Shift to select a range, drag to reorder`);
+        heading.setAttribute('aria-pressed', String(selectedTracks.has(tracks[trackIndex])));
+        heading.title = 'Tap to select this track; drag to reorder';
+        let suppressHeadingClick = false;
+        let trackDrag = null;
+        heading.addEventListener('click', event => {
+          if (suppressHeadingClick) { suppressHeadingClick = false; return; }
+          const trackRef = tracks[trackIndex];
+          if (event.shiftKey && trackSelectionAnchor && tracks.includes(trackSelectionAnchor)) {
+            const anchor = tracks.indexOf(trackSelectionAnchor);
+            for (let index = Math.min(anchor, trackIndex);
+                index <= Math.max(anchor, trackIndex); index++) selectedTracks.add(tracks[index]);
+          } else {
+            if (selectedTracks.has(trackRef)) selectedTracks.delete(trackRef);
+            else selectedTracks.add(trackRef);
+            trackSelectionAnchor = trackRef;
+          }
+          activeTrack = trackIndex;
+          pendingTrackFocus = trackIndex;
+          syncTrackSelection();
+          void refreshCompositor();
+        });
+        heading.addEventListener('keydown', event => {
+          if ((event.key === 'Delete' || event.key === 'Backspace') &&
+              selectedTracks.has(tracks[trackIndex])) {
+            event.preventDefault();
+            deleteSelectedTracks();
+            return;
+          }
+          if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+          event.preventDefault();
+          moveTrack(trackIndex, trackIndex + (event.key === 'ArrowUp' ? -1 : 1));
+        });
+        heading.addEventListener('pointerdown', event => {
+          if (timelineLocked() || event.button !== 0 ||
+              (event.pointerType === 'touch' && !event.isPrimary)) return;
+          suppressHeadingClick = false;
+          heading.setPointerCapture(event.pointerId);
+          trackDrag = { id: event.pointerId, startY: event.clientY,
+            target: trackIndex, moved: false };
+        });
+        heading.addEventListener('pointermove', event => {
+          if (!trackDrag || event.pointerId !== trackDrag.id || suppressDragForPinch) return;
+          if (!trackDrag.moved && Math.abs(event.clientY - trackDrag.startY) < 5) return;
+          trackDrag.moved = true;
+          row.classList.add('track-dragging');
+          heading.style.transform = `translateY(${event.clientY - trackDrag.startY}px)`;
+          const rows = Array.from(trackContent.querySelectorAll('.track-row[data-track]'));
+          trackDrag.target = rows.reduce((nearest, candidate) => {
+            const center = candidate.getBoundingClientRect();
+            const distance = Math.abs(event.clientY - (center.top + center.bottom) / 2);
+            return distance < nearest.distance
+              ? { index: Number(candidate.dataset.track), distance } : nearest;
+          }, { index: trackIndex, distance: Infinity }).index;
+          rows.forEach(candidate => candidate.classList.toggle('track-drop-target',
+            Number(candidate.dataset.track) === trackDrag.target && trackDrag.target !== trackIndex));
+        });
+        const finishTrackDrag = event => {
+          if (!trackDrag || event.pointerId !== trackDrag.id) return;
+          const { moved, target } = trackDrag;
+          trackDrag = null;
+          heading.style.removeProperty('transform');
+          row.classList.remove('track-dragging');
+          trackContent.querySelectorAll('.track-drop-target').forEach(candidate =>
+            candidate.classList.remove('track-drop-target'));
+          if (moved) suppressHeadingClick = true;
+          if (event.type === 'pointerup' && moved && !suppressDragForPinch)
+            moveTrack(trackIndex, target);
+        };
+        heading.addEventListener('pointerup', finishTrackDrag);
+        heading.addEventListener('pointercancel', finishTrackDrag);
         const lane = document.createElement('div');
         lane.className = 'track-lane';
         lane.dataset.track = String(trackIndex);
         lane.style.width = `${laneWidth}px`;
+        if (appearance) {
+          lane.style.minHeight = `${appearance.height}px`;
+          heading.style.paddingTop = appearance.paddingTop;
+          heading.style.paddingBottom = appearance.paddingBottom;
+          animatedRows.push({ row, heading, lane });
+        }
         track.forEach((clip, clipIndex) => {
           const item = trackDetails[trackIndex][clipIndex];
           if (!item) return;
           const id = clip.id;
           const tile = document.createElement('div');
           tile.className = 'clip-tile';
+          if (appearance) tile.style.opacity = appearance.fullOpacity;
           const entry = compositionItems.find(value =>
             value.clipRef === tracks[trackIndex][clipIndex]);
           if (entry) entry.tile = tile;
@@ -1774,6 +2048,14 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
           tile.dataset.index = String(clipIndex);
           tile.style.left = `${Math.round(clip.start * timelineScale)}px`;
           tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
+          const compactTile = document.createElement('div');
+          compactTile.className = 'collapsed-clip';
+          if (appearance) compactTile.style.opacity = appearance.compactOpacity;
+          compactTile.textContent = id;
+          compactTile.title = `${id}: ${clip.start.toFixed(2)}s, ${entry.duration.toFixed(2)}s long`;
+          compactTile.classList.toggle('selected', selectedClips.has(clipRef));
+          positionCompactTile(compactTile, tile);
+          entry.compactTile = compactTile;
           const thumbnail = document.createElement(item.type === 'video' ? 'video' : 'canvas');
           if (item.type === 'video') {
             thumbnail.src = item.src;
@@ -1812,20 +2094,12 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
           select.textContent = '✓';
           select.title = 'Select clip for group moving';
           select.setAttribute('aria-label', `Select ${id} on track ${trackIndex + 1}`);
-          function syncSelection() {
-            compositionItems.forEach(value => {
-              if (!value.tile) return;
-              const chosen = selectedClips.has(value.clipRef);
-              value.tile.classList.toggle('selected', chosen);
-              value.tile.querySelector('.clip-select')?.setAttribute('aria-pressed', String(chosen));
-            });
-          }
           select.setAttribute('aria-pressed', String(selectedClips.has(clipRef)));
           select.addEventListener('click', () => {
             if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
             else selectedClips.add(clipRef);
             syncSelection();
-            compositorMessage(`${selectedClips.size} clip${selectedClips.size === 1 ? '' : 's'} selected. Drag a selected clip to move the group.`);
+            announceSelection();
           });
           function updateLiveClip(start, duration, sourceStart, destinationTrack = trackIndex) {
             entry.start = roundTime(start);
@@ -1835,6 +2109,8 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
             entry.track = destinationTrack;
             tile.style.left = `${Math.round(entry.start * timelineScale)}px`;
             tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
+            positionCompactTile(compactTile, tile);
+            compactTile.title = `${id}: ${entry.start.toFixed(2)}s, ${entry.duration.toFixed(2)}s long`;
             length.textContent = `${entry.duration.toFixed(2)}s · ${entry.start.toFixed(2)}s`;
             compositionDuration = Math.max(0, ...compositionItems.map(value => value.end));
             compositionScrubber.max = String(compositionDuration);
@@ -1950,6 +2226,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
                 value.entry.end = value.entry.start + value.duration;
                 value.entry.track = value.track + deltaTrack;
                 value.entry.tile.style.left = `${Math.round(value.entry.start * timelineScale)}px`;
+                positionCompactTile(value.entry.compactTile, value.entry.tile);
                 value.entry.tile.style.transform = `translateY(${destination.getBoundingClientRect().top -
                   original.getBoundingClientRect().top}px)`;
               });
@@ -2096,15 +2373,34 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
             void refreshCompositor();
           });
           tile.append(thumbnail, name, length, grip, leftTrim, rightTrim, select, remove);
-          lane.append(tile);
+          lane.append(tile, compactTile);
         });
         row.append(heading, lane);
         trackContent.append(row);
       });
+      syncTrackSelection();
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
       setCompositionTime(session.playheadSeconds);
+      if (animatedRows.length) {
+        void trackContent.offsetHeight;
+        window.requestAnimationFrame(() => {
+          if (revision !== compositionRevision) return;
+          animatedRows.forEach(({ row, heading, lane }) => {
+            if (!row.isConnected) return;
+            lane.style.removeProperty('min-height');
+            heading.style.removeProperty('padding-top');
+            heading.style.removeProperty('padding-bottom');
+            row.querySelectorAll('.clip-tile, .collapsed-clip').forEach(tile =>
+              tile.style.removeProperty('opacity'));
+          });
+        });
+      }
       if (focusGrip) { focusGrip.focus(); pendingClipFocus = null; }
+      if (pendingTrackFocus !== null) {
+        trackContent.querySelector(`.track-row[data-track="${pendingTrackFocus}"] .track-heading`)?.focus();
+        pendingTrackFocus = null;
+      }
       refreshClipList();
     }
     function refreshClipList() {
