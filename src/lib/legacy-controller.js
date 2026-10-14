@@ -7,6 +7,7 @@ import { websocketImageDropEvent } from './websocket-image-drag.js';
 import { visibleCompositionItem } from './composition-visibility.js';
 import { isTeslaCarBrowser } from './tesla-browser.js';
 import { removeSelectedTracks } from './track-selection.js';
+import { createPreviewSplits } from './preview-splits.js';
 
   'use strict';
   export function initialize() {
@@ -1018,8 +1019,8 @@ import { removeSelectedTracks } from './track-selection.js';
       window.dispatchEvent(new CustomEvent('urlAutofill:focus', { detail: { focused } }));
     }
     timelineToggle.addEventListener('click', () => setRenderFocus(!renderFocus));
-    const stage = document.getElementById('stage');
     const renderSurface = document.getElementById('render-surface');
+    const previewHost = renderSurface.parentElement;
     const pinStorageKey = 'urlAutofill.previewResolution.v1';
     let pinnedResolution = null;
     try {
@@ -1029,8 +1030,8 @@ import { removeSelectedTracks } from './track-selection.js';
     } catch (error) { /* Start with a responsive preview. */ }
     function updatePinnedScale() {
       if (!pinnedResolution) return;
-      const scale = Math.min(stage.clientWidth / pinnedResolution.width,
-        stage.clientHeight / pinnedResolution.height);
+      const scale = Math.min(previewHost.clientWidth / pinnedResolution.width,
+        previewHost.clientHeight / pinnedResolution.height);
       renderSurface.style.setProperty('--pinned-width', `${pinnedResolution.width}px`);
       renderSurface.style.setProperty('--pinned-height', `${pinnedResolution.height}px`);
       renderSurface.style.setProperty('--pinned-scale', String(scale || 1));
@@ -1054,11 +1055,11 @@ import { removeSelectedTracks } from './track-selection.js';
       } catch (error) { /* Pinning still works without browser storage. */ }
     }
     pinPreviewButton.addEventListener('click', () => setPinnedResolution(pinnedResolution ? null : {
-      width: Math.max(1, stage.clientWidth), height: Math.max(1, stage.clientHeight)
+      width: Math.max(1, previewHost.clientWidth), height: Math.max(1, previewHost.clientHeight)
     }));
     setRenderFocus(renderFocus);
     setPinnedResolution(pinnedResolution);
-    if (typeof ResizeObserver === 'function') new ResizeObserver(updatePinnedScale).observe(stage);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(updatePinnedScale).observe(previewHost);
     else window.addEventListener('resize', updatePinnedScale);
     let tracks = [[]];
     let activeTrack = 0;
@@ -1076,6 +1077,17 @@ import { removeSelectedTracks } from './track-selection.js';
     let timelineGestureController = null;
     let visibleItem = null;
     let autoExpandedTrackRow = null;
+    const previewSplits = createPreviewSplits({
+      layout: document.getElementById('preview-layout'),
+      verticalButton: document.getElementById('preview-split-vertical'),
+      horizontalButton: document.getElementById('preview-split-horizontal'),
+      closeButton: document.getElementById('preview-close-view'),
+      getSnapshot: () => ({ tracks, items: compositionItems,
+        seconds: session.playheadSeconds, locked: session.lockRenderFrame,
+        playing: compositionPlaying, activeTrack, selectedClips }),
+      resolveImage: id => loadMedia(id),
+      onLayoutChange: updatePinnedScale
+    });
     let missingClipError = '';
     let imageRenderError = '';
     let imageLoadFailed = false;
@@ -1101,10 +1113,9 @@ import { removeSelectedTracks } from './track-selection.js';
     });
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
-    const compactClipInset = 5;
     function positionCompactTile(compactTile, tile) {
-      compactTile.style.left = `${parseFloat(tile.style.left) + compactClipInset}px`;
-      compactTile.style.width = `${parseFloat(tile.style.width) - 2 * compactClipInset}px`;
+      compactTile.style.left = tile.style.left;
+      compactTile.style.width = tile.style.width;
     }
     let pendingClipFocus = null;
     const clipDetails = new Map();
@@ -1383,10 +1394,8 @@ import { removeSelectedTracks } from './track-selection.js';
         markerTile.append(renderFrameMarker);
         const frameOffset = Math.max(0, Math.min(active.duration,
           session.renderFrameSeconds - active.start));
-        const markerOffset = frameOffset * timelineScale -
-          (markerTile === active.compactTile ? compactClipInset : 0);
         renderFrameMarker.style.left = `${Math.max(0, Math.min(markerTile.clientWidth - 2,
-          markerOffset))}px`;
+          frameOffset * timelineScale))}px`;
       } else renderFrameMarker.remove();
       compositionScrubber.value = String(session.playheadSeconds);
       compositionScrubber.style.setProperty('--progress', `${compositionDuration ?
@@ -1411,6 +1420,7 @@ import { removeSelectedTracks } from './track-selection.js';
           trackList.scrollLeft = Math.max(0, x - trackList.clientWidth / 2);
         }
       }
+      previewSplits.sync(seek);
       saveSession();
     }
     function setCompositionTime(seconds, seek = true) {
@@ -1485,9 +1495,12 @@ import { removeSelectedTracks } from './track-selection.js';
     const deleteTracksButton = document.getElementById('delete-tracks');
     function syncTrackSelection() {
       trackContent.querySelectorAll('.track-row[data-track]').forEach(row => {
-        const selected = selectedTracks.has(tracks[Number(row.dataset.track)]);
+        const trackIndex = Number(row.dataset.track);
+        const selected = selectedTracks.has(tracks[trackIndex]);
         row.classList.toggle('selected-track', selected);
-        row.querySelector('.track-heading')?.setAttribute('aria-pressed', String(selected));
+        const heading = row.querySelector('.track-heading');
+        heading?.setAttribute('aria-pressed', String(selected));
+        if (heading) heading.textContent = `Track ${trackIndex + 1}${trackIndex === activeTrack ? ' ✓' : ''}`;
       });
       deleteTracksButton.disabled = selectedTracks.size === 0;
       deleteTracksButton.textContent = selectedTracks.size
@@ -1584,8 +1597,10 @@ import { removeSelectedTracks } from './track-selection.js';
           const chosen = selectedClips.has(value.clipRef);
           value.tile.classList.toggle('selected', chosen);
           value.compactTile?.classList.toggle('selected', chosen);
+          value.compactTile?.setAttribute('aria-pressed', String(chosen));
           value.tile.querySelector('.clip-select')?.setAttribute('aria-pressed', String(chosen));
         });
+        previewSplits.sync(true);
       }
       function announceSelection() {
         compositorMessage(`${selectedClips.size} clip${selectedClips.size === 1 ? '' : 's'} selected. Drag a selected clip to move the group.`);
@@ -1758,7 +1773,7 @@ import { removeSelectedTracks } from './track-selection.js';
         { signal: timelineGestureController.signal });
       trackList.addEventListener('pointerdown', event => {
         if (!timelineLocked() || event.button !== 0 || touchTimelineLock ||
-            event.target.closest('button, input, .track-ruler-lane, .timeline-zoom')) return;
+            event.target.closest('button, input, .collapsed-clip, .track-ruler-lane, .timeline-zoom')) return;
         event.preventDefault();
         trackList.setPointerCapture(event.pointerId);
         activePan = { id: event.pointerId, x: event.clientX, y: event.clientY,
@@ -1781,8 +1796,8 @@ import { removeSelectedTracks } from './track-selection.js';
       };
       trackList.addEventListener('pointerdown', event => {
         if (timelineLocked() || event.button !== 0 || event.pointerType === 'touch' ||
-            event.target.closest('.clip-tile, .track-heading') ||
-            !(event.target.closest('.track-lane, .track-row') || event.target === trackContent)) return;
+            event.target.closest('.clip-tile, .collapsed-clip, .track-heading') ||
+            !event.target.closest('.track-lane')) return;
         event.preventDefault();
         trackList.setPointerCapture(event.pointerId);
         boxSelection = { id: event.pointerId, start: contentPoint(event),
@@ -1970,9 +1985,8 @@ import { removeSelectedTracks } from './track-selection.js';
             trackSelectionAnchor = trackRef;
           }
           activeTrack = trackIndex;
-          pendingTrackFocus = trackIndex;
           syncTrackSelection();
-          void refreshCompositor();
+          syncCompositionPreview();
         });
         heading.addEventListener('keydown', event => {
           if ((event.key === 'Delete' || event.key === 'Backspace') &&
@@ -2051,9 +2065,28 @@ import { removeSelectedTracks } from './track-selection.js';
           const compactTile = document.createElement('div');
           compactTile.className = 'collapsed-clip';
           if (appearance) compactTile.style.opacity = appearance.compactOpacity;
-          compactTile.textContent = id;
+          const compactContent = document.createElement('span');
+          compactContent.className = 'collapsed-clip-content';
+          compactContent.textContent = id;
+          compactTile.append(compactContent);
           compactTile.title = `${id}: ${clip.start.toFixed(2)}s, ${entry.duration.toFixed(2)}s long`;
           compactTile.classList.toggle('selected', selectedClips.has(clipRef));
+          compactTile.tabIndex = 0;
+          compactTile.setAttribute('role', 'button');
+          compactTile.setAttribute('aria-label', `Select ${id} on track ${trackIndex + 1}`);
+          compactTile.setAttribute('aria-pressed', String(selectedClips.has(clipRef)));
+          const selectCompactClip = () => {
+            if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
+            else selectedClips.add(clipRef);
+            syncSelection();
+            announceSelection();
+          };
+          compactTile.addEventListener('click', selectCompactClip);
+          compactTile.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            selectCompactClip();
+          });
           positionCompactTile(compactTile, tile);
           entry.compactTile = compactTile;
           const thumbnail = document.createElement(item.type === 'video' ? 'video' : 'canvas');
@@ -2382,6 +2415,7 @@ import { removeSelectedTracks } from './track-selection.js';
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
       setCompositionTime(session.playheadSeconds);
+      previewSplits.refreshSources();
       if (animatedRows.length) {
         void trackContent.offsetHeight;
         window.requestAnimationFrame(() => {
@@ -2441,6 +2475,11 @@ import { removeSelectedTracks } from './track-selection.js';
             imageAdd.setAttribute('aria-label', imageAdd.title);
             imageAdd.disabled = clip.parts !== clip.total;
             imageAdd.addEventListener('click', () => addClipToTrack(clip.id));
+            imageAdd.draggable = !imageAdd.disabled;
+            imageAdd.addEventListener('dragstart', event => {
+              event.dataTransfer.setData('application/x-url-autofill-image-id', clip.id);
+              event.dataTransfer.effectAllowed = 'copy';
+            });
             timelineImageList.append(imageAdd);
           }
           const row = document.createElement('div');

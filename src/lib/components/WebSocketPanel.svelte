@@ -137,6 +137,8 @@
     window.removeEventListener('pointercancel', endImageDrag);
     imageDrag.ghost.remove();
     imageDrag = null;
+    document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-image-pointer-drag',
+      { detail: { phase: 'end' } }));
     document.body.classList.remove('websocket-image-dragging');
     document.getElementById('track-list')?.classList.remove('websocket-image-drop-target');
   }
@@ -149,10 +151,22 @@
     const trackList = document.getElementById('track-list');
     const target = document.elementFromPoint(event.clientX, event.clientY);
     trackList?.classList.toggle('websocket-image-drop-target', Boolean(target && trackList.contains(target)));
+    document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-image-pointer-drag',
+      { detail: { phase: 'move', clientX: event.clientX, clientY: event.clientY } }));
   }
 
   function dropImage(event) {
     if (!imageDrag || event.pointerId !== imageDrag.pointerId) return;
+    const previewDrag = { phase: 'drop', clientX: event.clientX,
+      clientY: event.clientY, src: imageDrag.src, handled: false };
+    document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-image-pointer-drag',
+      { detail: previewDrag }));
+    if (previewDrag.handled) {
+      imageDropStatus = 'Image opened in a preview view.';
+      imageDropError = false;
+      endImageDrag();
+      return;
+    }
     const trackList = document.getElementById('track-list');
     const target = document.elementFromPoint(event.clientX, event.clientY);
     if (target && trackList?.contains(target)) {

@@ -123,13 +123,15 @@
   .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .track-lane { min-height: 32px; }
   .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .clip-tile { opacity: 0; pointer-events: none; }
   .collapsed-clip { position: absolute; top: 5px; height: 20px; opacity: 0;
-    padding: 1px 5px; overflow: hidden; border: 1px solid #7799cb;
-    border-radius: 4px; background: #284e82; color: #f3f6fc;
-    font-size: 11px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis;
     pointer-events: none; transition: opacity .18s ease; }
-  .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .collapsed-clip { opacity: 1; }
-  .collapsed-clip.selected { border-color: #70d8ff; box-shadow: inset 0 0 0 1px #70d8ff; }
-  .collapsed-clip.under-playhead { border-color: #ffd976; box-shadow: inset 0 0 0 1px #ffd976; }
+  .collapsed-clip-content { position: absolute; inset: 0 5px; padding: 1px 5px;
+    overflow: hidden; border: 1px solid #7799cb; border-radius: 4px;
+    background: #284e82; color: #f3f6fc; font-size: 11px; line-height: 16px;
+    white-space: nowrap; text-overflow: ellipsis; }
+  .track-row[data-track]:not(.selected-track):not(.auto-expanded-track) .collapsed-clip {
+    opacity: 1; pointer-events: auto; cursor: pointer; }
+  .collapsed-clip.selected .collapsed-clip-content { border-color: #70d8ff; box-shadow: inset 0 0 0 1px #70d8ff; }
+  .collapsed-clip.under-playhead .collapsed-clip-content { border-color: #ffd976; box-shadow: inset 0 0 0 1px #ffd976; }
   .track-row.track-dragging { position: relative; z-index: 11; }
   .track-dragging .track-heading { cursor: grabbing; opacity: .8; }
   .track-drop-target .track-heading { outline: 2px solid #70d8ff; outline-offset: -2px; }
@@ -202,6 +204,46 @@
   body { padding: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
   #stage { flex: 1 1 auto; width: 100%; max-width: none; min-height: 0;
     position: relative; overflow: hidden; background: #10151e; }
+  #preview-layout { position: absolute; inset: 0; overflow: hidden; }
+  .preview-view, .preview-split { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+  .preview-view { overflow: hidden; background: #10151e; }
+  .preview-split .preview-view.is-active::after { content: ''; position: absolute; inset: 0;
+    z-index: 3; border: 1px solid #70d8ff; pointer-events: none; }
+  .preview-split { display: grid; }
+  .preview-split-vertical { grid-template-columns: minmax(0, var(--split-ratio)) 1px minmax(0, 1fr); }
+  .preview-split-horizontal { grid-template-rows: minmax(0, var(--split-ratio)) 1px minmax(0, 1fr); }
+  .preview-branch { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+  .preview-divider { position: relative; z-index: 10; touch-action: none; background: transparent; }
+  .preview-divider::after { content: ''; position: absolute; background: #8fa7c7; pointer-events: none; }
+  .preview-split-vertical > .preview-divider { width: 25px; margin-left: -12px; cursor: col-resize; }
+  .preview-split-vertical > .preview-divider::after { top: 0; bottom: 0; left: 12px; width: 1px; }
+  .preview-split-horizontal > .preview-divider { height: 25px; margin-top: -12px; cursor: row-resize; }
+  .preview-split-horizontal > .preview-divider::after { left: 0; right: 0; top: 12px; height: 1px; }
+  .preview-divider:focus-visible { outline: 2px solid #ffd976; outline-offset: -2px; }
+  #preview-view-controls { position: absolute; top: 8px; right: 8px; z-index: 12;
+    display: flex; gap: 4px; padding: 3px; border-radius: 6px; background: #10151ed9; }
+  #preview-view-controls button { min-height: 32px; padding: 3px 6px; border-radius: 4px;
+    font-size: 12px; }
+  #preview-view-controls button:disabled { opacity: .45; cursor: default; }
+  .preview-source-surface { position: absolute; inset: 0; display: grid; place-items: center;
+    background: #10151e; }
+  .preview-source-surface img, .preview-source-surface video { width: 100%; height: 100%;
+    min-width: 0; min-height: 0; object-fit: contain; grid-area: 1 / 1; }
+  .preview-source-empty { grid-area: 1 / 1; padding: 24px; color: #b8c8e0; text-align: center; }
+  .preview-source-surface [hidden] { display: none; }
+  .preview-source-select { position: absolute; top: 8px; left: 8px; z-index: 4;
+    max-width: calc(100% - 16px); min-height: 32px; padding: 3px 6px;
+    border: 1px solid #7085a1; border-radius: 4px; color: #fff;
+    background: #182130e8; font: 12px system-ui, sans-serif; }
+  .preview-drop-highlight { position: absolute; z-index: 7; display: grid; place-items: center;
+    border: 2px solid #70d8ff; background: #70d8ff44; color: #fff;
+    font: 700 14px system-ui, sans-serif; text-align: center; text-shadow: 0 1px 3px #10151e;
+    pointer-events: none; user-select: none; -webkit-user-select: none; }
+  .preview-drop-left { inset: 0 50% 0 0; }
+  .preview-drop-right { inset: 0 0 0 50%; }
+  .preview-drop-top { inset: 0 0 50% 0; }
+  .preview-drop-bottom { inset: 50% 0 0 0; }
+  body.minimal #preview-view-controls, body.screenplay-mode #preview-view-controls { display: none; }
   #render-surface { position: absolute; inset: 0; overflow: hidden; }
   body.preview-pinned #render-surface { inset: auto; left: 50%; top: 50%;
     width: var(--pinned-width); height: var(--pinned-height);
@@ -240,7 +282,9 @@
   body.minimal #compositor { display: none; }
   #compositor { position: relative; z-index: 20; flex: 0 0 var(--timeline-height, 244px); width: 100%;
     min-height: 0; margin: 0; padding: 8px 12px max(8px, env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; overflow: hidden; border-radius: 0; border-width: 1px 0 0; }
+    display: flex; flex-direction: column; overflow: hidden; border-radius: 0; border-width: 1px 0 0;
+    user-select: none; -webkit-user-select: none; }
+  #compositor input[type="text"] { user-select: text; -webkit-user-select: text; }
   #compositor h2 { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
     clip: rect(0, 0, 0, 0); white-space: nowrap; }
   #timeline-controls { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
@@ -308,7 +352,7 @@
     background: #fff; color: #171717; font: 16px/1.5 'Courier New', monospace;
     box-shadow: 0 12px 36px #0006; }
   body.screenplay-mode #screenplay-workspace { display: block; }
-  body.screenplay-mode #render-surface, body.screenplay-mode #compositor,
+  body.screenplay-mode #preview-layout, body.screenplay-mode #render-surface, body.screenplay-mode #compositor,
   body.screenplay-mode #minimal-toggle { display: none; }
   #menu-toggle, #page-fullscreen, #tesla-theater-button {  z-index: 1001; width: 44px; min-height: 44px; padding: 4px;
     border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
