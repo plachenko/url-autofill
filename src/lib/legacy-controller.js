@@ -19,6 +19,7 @@ import { createPreviewSplits } from './preview-splits.js';
     const fullscreenStorageKey = 'urlAutofill.fullscreen.v1';
     let fullscreenWanted = false;
     let fullscreenRestorePending = false;
+    const teslaMode = () => canShowTeslaTheater(navigator.userAgent, window.localStorage);
     try { fullscreenWanted = window.localStorage.getItem(fullscreenStorageKey) === '1'; }
     catch (error) { /* Fullscreen still works without browser storage. */ }
     const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
@@ -40,9 +41,10 @@ import { createPreviewSplits } from './preview-splits.js';
       const label = active ? 'Exit fullscreen' : 'Enter fullscreen';
       const supported = typeof requestFullscreen(document.documentElement) === 'function' &&
         typeof exitFullscreen() === 'function';
-      fullscreenButton.hidden = !supported;
-      drawerFullscreenButton.hidden = !supported;
-      fullscreenRestoreButton.hidden = !supported || !fullscreenWanted || active;
+      const showPageFullscreen = supported && !teslaMode();
+      fullscreenButton.hidden = !showPageFullscreen;
+      drawerFullscreenButton.hidden = !showPageFullscreen;
+      fullscreenRestoreButton.hidden = !showPageFullscreen || !fullscreenWanted || active;
       fullscreenButton.setAttribute('aria-label', label);
       fullscreenButton.setAttribute('aria-pressed', String(active));
       fullscreenButton.title = label;
@@ -65,7 +67,7 @@ import { createPreviewSplits } from './preview-splits.js';
       void (active ? changeFullscreen(null) : enterPageFullscreen());
     }
     async function restoreFullscreen() {
-      if (!fullscreenWanted || fullscreenElement() || fullscreenRestorePending) return;
+      if (teslaMode() || !fullscreenWanted || fullscreenElement() || fullscreenRestorePending) return;
       fullscreenRestorePending = true;
       try { await enterPageFullscreen(); }
       finally { fullscreenRestorePending = false; }
@@ -75,10 +77,11 @@ import { createPreviewSplits } from './preview-splits.js';
     const teslaFullscreenButton = document.getElementById('tesla-fullscreen');
     const teslaTheaterButton = document.getElementById('tesla-theater-button');
     function syncTeslaTheater() {
-      const teslaSupported = canShowTeslaTheater(navigator.userAgent, window.localStorage) &&
+      const teslaSupported = teslaMode() &&
         /^https?:$/.test(window.location.protocol);
       teslaFullscreenButton.disabled = !teslaSupported;
       teslaTheaterButton.disabled = !teslaSupported;
+      syncFullscreen();
     }
     syncTeslaTheater();
     window.addEventListener(teslaTheaterPreferenceEvent, syncTeslaTheater);
