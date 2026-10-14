@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { websocketImageDataUrl } from '../websocket-image.js';
+  import { websocketImageDragType } from '../websocket-image-drag.js';
 
   let serverUrl = '';
   let outgoingText = '';
@@ -98,6 +99,18 @@
     try { imageSrc = websocketImageDataUrl(returnText); }
     catch (error) { imageError = error.message || 'Could not render the image.'; }
   }
+
+  function startImageDrag(event) {
+    if (!event.dataTransfer || !imageSrc) return;
+    event.dataTransfer.setData(websocketImageDragType, imageSrc);
+    event.dataTransfer.effectAllowed = 'copy';
+    document.body.classList.add('websocket-image-dragging');
+  }
+
+  function endImageDrag() {
+    document.body.classList.remove('websocket-image-dragging');
+    document.getElementById('track-list')?.classList.remove('websocket-image-drop-target');
+  }
 </script>
 
 <section id="websocket-panel" aria-label="WebSocket" tabindex="-1">
@@ -119,6 +132,7 @@
   <button type="button" onclick={renderImage} disabled={!returnText.trim()}>Render image</button>
   {#if imageError}<p class="websocket-image-error" role="alert">{imageError}</p>{/if}
   {#if imageSrc}
-    <img class="websocket-image" src={imageSrc} alt="WebSocket server reply" onerror={() => { imageSrc = ''; imageError = 'The browser could not display this image.'; }}>
+    <img class="websocket-image" src={imageSrc} alt="WebSocket server reply" draggable="true" ondragstart={startImageDrag} ondragend={endImageDrag} onerror={() => { imageSrc = ''; imageError = 'The browser could not display this image.'; }}>
+    <p class="websocket-image-hint">Drag this image onto a timeline track.</p>
   {/if}
 </section>

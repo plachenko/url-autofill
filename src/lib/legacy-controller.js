@@ -3,6 +3,7 @@ import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMed
 import { clearAllAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
 import { createProject, deleteProject, listProjects, renameProject, switchProject } from './project-store.js';
 import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
+import { websocketImageDragType } from './websocket-image-drag.js';
 
   'use strict';
   export function initialize() {
@@ -855,6 +856,45 @@ import { createScene, deleteScene, listScenes, renameScene, switchScene } from '
     function clipSeconds() { return Number(clipSecondsField.value); }
     const trackList = document.getElementById('track-list');
     const trackContent = document.getElementById('track-content');
+    trackList.addEventListener('dragover', event => {
+      if (!event.dataTransfer?.types.includes(websocketImageDragType)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      trackList.classList.add('websocket-image-drop-target');
+    });
+    trackList.addEventListener('dragleave', event => {
+      if (!trackList.contains(event.relatedTarget))
+        trackList.classList.remove('websocket-image-drop-target');
+    });
+    trackList.addEventListener('drop', event => {
+      trackList.classList.remove('websocket-image-drop-target');
+      if (!event.dataTransfer?.types.includes(websocketImageDragType)) return;
+      event.preventDefault();
+      document.body.classList.remove('websocket-image-dragging');
+      try {
+        if (tracks.flat().length >= 100)
+          throw new Error('The compositor supports up to 100 clips.');
+        const row = event.target.closest('.track-row');
+        const trackIndex = row ? Number(row.querySelector('.track-lane')?.dataset.track) : activeTrack;
+        const lane = row?.querySelector('.track-lane') ||
+          trackContent.querySelector(`.track-lane[data-track="${activeTrack}"]`);
+        if (!lane || !Number.isInteger(trackIndex) || !tracks[trackIndex])
+          throw new Error('Choose a track to drop the image on.');
+        const base = `image-${Date.now()}`;
+        let id = base;
+        for (let suffix = 1;
+          window.localStorage.getItem(`${mediaStorageKey(id)}.meta`) !== null; suffix++)
+          id = `${base}-${suffix}`;
+        const start = Math.min(86400, roundTime(Math.max(0, snappedClipStart(
+          (event.clientX - lane.getBoundingClientRect().left) / timelineScale, 3))));
+        const result = storeWholeMedia(id, event.dataTransfer.getData(websocketImageDragType), 3);
+        tracks[trackIndex].push({ id, start });
+        activeTrack = trackIndex;
+        saveTracks();
+        void refreshCompositor();
+        clipMessage(`${result} Added to track ${trackIndex + 1} at ${start.toFixed(2)}s.`);
+      } catch (error) { clipMessage(error.message || 'Could not add the image.', true); }
+    });
     const timelineZoomKey = 'urlAutofill.timelineZoom.v1';
     let timelineScale = 40;
     try {
