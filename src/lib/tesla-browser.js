@@ -1,3 +1,3 @@
 export function isTeslaCarBrowser(userAgent) {
-  return /\b(?:Tesla\/|QtCarBrowser\b)/i.test(userAgent || '');
+  return /\b(?:Tesla\b(?!Browser)|QtCarBrowser\b)/i.test(userAgent || '');
 }

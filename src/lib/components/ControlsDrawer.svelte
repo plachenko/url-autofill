@@ -7,7 +7,11 @@
   import WebSocketPanel from "./WebSocketPanel.svelte";
 
   let teslaBrowser = $state(false);
-  onMount(() => { teslaBrowser = isTeslaCarBrowser(navigator.userAgent); });
+  let browserUserAgent = $state('Loading…');
+  onMount(() => {
+    browserUserAgent = navigator.userAgent || '(empty)';
+    teslaBrowser = isTeslaCarBrowser(browserUserAgent);
+  });
 </script>
 <div id="drawer-backdrop" hidden></div>
 <aside id="drawer" aria-label="Controls and help" hidden>
@@ -24,6 +28,11 @@
     <button type="button" data-mode="sp">Screenplay mode</button>
   </div>
   <header><h1>URL Autofill</h1><span class="version">v0.7.0</span></header>
+  <details class="browser-debug">
+    <summary>Browser debug</summary>
+    <p>Tesla browser detected: {teslaBrowser ? 'Yes' : 'No'}</p>
+    <p>User agent: <span class="browser-user-agent">{browserUserAgent}</span></p>
+  </details>
   <MemoryBar />
   <label for="text">You said</label>
   <textarea id="text" placeholder="Your URL can fill this for you"></textarea>
@@ -80,3 +89,11 @@
   <button id="clear-saved-data" type="button">Clear saved data</button>
   <HelpPanel />
 </aside>
+
+<style>
+  .browser-debug { margin: 10px 0; padding: 8px; border: 1px solid #7085a1;
+    border-radius: 6px; overflow-wrap: anywhere; }
+  .browser-debug summary { cursor: pointer; }
+  .browser-debug p { margin: 8px 0 0; font-size: 13px; }
+  .browser-user-agent { user-select: text; }
+</style>
