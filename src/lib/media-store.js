@@ -1,3 +1,5 @@
+import { cachedReceivedBlobUrl, receivedBlobUrl, saveReceivedBlob, removeReceivedBlob } from './received-media.js';
+
 export const mediaStorageKey = id => `urlAutofill.media.v1.${id}`;
 export const validMediaId = id => /^[a-zA-Z0-9_-]{1,64}$/.test(id);
 export const validMime = mime => /^(image|video)\/[a-z0-9.+-]+$/i.test(mime);
@@ -78,6 +80,11 @@ export function loadMedia(id) {
   const meta = JSON.parse(window.localStorage.getItem(`${base}.meta`) || 'null');
   if (!meta || !validMime(meta.mime) || !Number.isInteger(meta.total) ||
       meta.total < 1 || meta.total > 1000) throw new Error(`No stored media named ${id}.`);
+  if (meta.storage === 'blob') {
+    const src = cachedReceivedBlobUrl(meta.blobId);
+    if (!src) throw new Error('Received clip is still loading.');
+    return { id, type: meta.mime.startsWith('video/') ? 'video' : 'image', src, seconds: meta.seconds };
+  }
   const parts = [];
   for (let index = 1; index <= meta.total; index++) {
     const part = window.localStorage.getItem(`${base}.part.${index}`);
@@ -92,4 +99,27 @@ export function loadMedia(id) {
   return { id, type: meta.mime.startsWith('video/') ? 'video' : 'image',
     src: `data:${meta.mime};base64,${encoded}`,
     seconds: Number.isFinite(meta.seconds) ? meta.seconds : 3 };
+}
+
+export async function loadMediaAsync(id) {
+  if (!validMediaId(id)) throw new Error('Invalid media ID.');
+  const meta = JSON.parse(window.localStorage.getItem(`${mediaStorageKey(id)}.meta`) || 'null');
+  if (meta?.storage === 'blob') await receivedBlobUrl(meta.blobId);
+  return loadMedia(id);
+}
+
+export async function storeReceivedMedia(id, blob, seconds = 3) {
+  if (!validMediaId(id) || !validMime(blob.type)) throw new Error('Choose a received image or video.');
+  const key = `${mediaStorageKey(id)}.meta`;
+  if (window.localStorage.getItem(key) !== null) throw new Error('That clip ID is already stored.');
+  const blobId = await saveReceivedBlob(blob);
+  try {
+    await receivedBlobUrl(blobId);
+    window.localStorage.setItem(key, JSON.stringify({ mime: blob.type, total: 1, seconds,
+      storage: 'blob', blobId, bytes: blob.size }));
+  } catch (error) {
+    await removeReceivedBlob(blobId);
+    throw error;
+  }
+  return `Saved ${id} (${blob.type}).`;
 }

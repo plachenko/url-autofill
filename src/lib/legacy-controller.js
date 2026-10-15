@@ -1,8 +1,9 @@
 import { compactParams } from "./url-parameters.js";
-import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia } from "./media-store.js";
+import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia, loadMediaAsync, storeReceivedMedia } from "./media-store.js";
 import { clearAllAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
 import { createProject, deleteProject, listProjects, renameProject, switchProject } from './project-store.js';
 import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
+import { clearReceivedMedia, exportReceivedMedia, importReceivedMedia } from './received-media.js';
 import { websocketImageDropEvent } from './websocket-image-drag.js';
 import { visibleCompositionItem } from './composition-visibility.js';
 import { canShowTeslaTheater, teslaTheaterPreferenceEvent,
@@ -672,9 +673,10 @@ import { createPreviewSplits } from './preview-splits.js';
       status.textContent = text;
       status.classList.toggle('error', error);
     }
-    document.getElementById('clear-saved-data').addEventListener('click', () => {
+    document.getElementById('clear-saved-data').addEventListener('click', async () => {
       if (!window.confirm('Delete all URL Autofill projects, clips, tracks, text, memory, and preferences saved in this browser? This cannot be undone.')) return;
       try {
+        await clearReceivedMedia();
         clearAllAppStorage(window.localStorage);
         clearingSavedData = true;
         const url = new URL(window.location.href);
@@ -801,7 +803,7 @@ import { createPreviewSplits } from './preview-splits.js';
         saveMemory();
         saveSession(true);
         await new Promise(resolve => window.setTimeout(resolve, 150));
-        const backup = createSessionBackup(window.localStorage);
+        const backup = await exportReceivedMedia(createSessionBackup(window.localStorage));
         const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -829,7 +831,7 @@ import { createPreviewSplits } from './preview-splits.js';
           throw new Error('This session file is too large to restore.');
         const backup = JSON.parse(await file.text());
         if (!window.confirm('Replace the current project with this session file?')) return;
-        restoreSessionBackup(window.localStorage, backup);
+        restoreSessionBackup(window.localStorage, await importReceivedMedia(backup));
         restored = true;
         clearingSavedData = true;
         const url = new URL(window.location.href);
@@ -871,8 +873,9 @@ import { createPreviewSplits } from './preview-splits.js';
     const trackList = document.getElementById('track-list');
     const trackContent = document.getElementById('track-content');
     trackList.addEventListener(websocketImageDropEvent, event => {
+      event.detail.done = (async () => {
       try {
-        const { src, clientX, target } = event.detail;
+        const { src, blob, clientX, target } = event.detail;
         if (tracks.flat().length >= 100)
           throw new Error('The compositor supports up to 100 clips.');
         const row = target.closest('.track-row');
@@ -880,26 +883,29 @@ import { createPreviewSplits } from './preview-splits.js';
         const lane = row?.querySelector('.track-lane') ||
           trackContent.querySelector(`.track-lane[data-track="${activeTrack}"]`);
         if (!lane || !Number.isInteger(trackIndex) || !tracks[trackIndex])
-          throw new Error('Choose a track to drop the image on.');
-        const base = `image-${Date.now()}`;
+          throw new Error('Choose a track to drop the media on.');
+        const base = `media-${Date.now()}`;
         let id = base;
         for (let suffix = 1;
           window.localStorage.getItem(`${mediaStorageKey(id)}.meta`) !== null; suffix++)
           id = `${base}-${suffix}`;
+        const result = blob ? await storeReceivedMedia(id, blob, 3) : storeWholeMedia(id, src, 3);
+        const details = await clipDetail(id);
         const start = Math.min(86400, roundTime(Math.max(0, snappedClipStart(
-          (clientX - lane.getBoundingClientRect().left) / timelineScale, 3))));
-        const result = storeWholeMedia(id, src, 3);
+          (clientX - lane.getBoundingClientRect().left) / timelineScale, details.duration))));
         tracks[trackIndex].push({ id, start });
         activeTrack = trackIndex;
         saveTracks();
-        void refreshCompositor();
+        refreshClipList();
+        await refreshCompositor();
         event.detail.message = `${result} Added to track ${trackIndex + 1} at ${start.toFixed(2)}s.`;
         clipMessage(event.detail.message);
       } catch (error) {
-        event.detail.message = error.message || 'Could not add the image.';
+        event.detail.message = error.message || 'Could not add the media.';
         event.detail.error = true;
         clipMessage(event.detail.message, true);
       }
+      })();
     });
     const timelineZoomKey = 'urlAutofill.timelineZoom.v1';
     let timelineScale = 40;
@@ -1181,8 +1187,7 @@ import { createPreviewSplits } from './preview-splits.js';
     }
     function clipDetail(id) {
       if (!clipDetails.has(id)) {
-        const item = loadMedia(id);
-        const promise = item.type === 'image' ? Promise.resolve({ ...item, duration: item.seconds }) :
+        const promise = loadMediaAsync(id).then(item => item.type === 'image' ? Promise.resolve({ ...item, duration: item.seconds }) :
           new Promise(resolve => {
             const probe = document.createElement('video');
             let done = false;
@@ -1198,7 +1203,7 @@ import { createPreviewSplits } from './preview-splits.js';
             probe.onloadedmetadata = () => finish(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 3);
             probe.onerror = () => finish(3);
             probe.src = item.src;
-          });
+          }));
         clipDetails.set(id, promise);
       }
       return clipDetails.get(id);
@@ -2467,6 +2472,7 @@ import { createPreviewSplits } from './preview-splits.js';
             const data = window.localStorage.getItem(`${base}.part.${part}`);
             if (data !== null) { parts++; length += data.length; }
           }
+          if (meta.storage === 'blob') { parts = 1; length = meta.bytes / .75; }
           clips.push({ id: match[1], mime: meta.mime, parts, total: meta.total, length });
         }
         clips.sort((a, b) => a.id.localeCompare(b.id));

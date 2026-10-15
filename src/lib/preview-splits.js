@@ -120,6 +120,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
       sync(true);
     });
     video.addEventListener('loadedmetadata', () => sync(true));
+    video.addEventListener('error', () => { viewState.get(view).droppedImageFailed = true; sync(true); });
     viewState.set(view, { select, image, video, empty, droppedImage, droppedImageFailed: false,
       clipRef: null,
       clipStartedAt: performance.now() });
@@ -237,11 +238,17 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
       const state = viewState.get(view);
       const source = state.select.value;
       if (source === 'dropped-image' && state.droppedImage) {
-        if (state.image.src !== state.droppedImage.src) state.image.src = state.droppedImage.src;
-        state.image.hidden = state.droppedImageFailed;
-        state.video.hidden = true;
-        state.video.pause();
-        state.empty.textContent = 'Could not display the dropped image.';
+        const dropped = state.droppedImage;
+        const isVideo = dropped.type === 'video';
+        const element = isVideo ? state.video : state.image;
+        if (element.src !== dropped.src) element.src = dropped.src;
+        state.image.hidden = isVideo || state.droppedImageFailed;
+        state.video.hidden = !isVideo || state.droppedImageFailed;
+        if (isVideo && !state.droppedImageFailed) {
+          state.video.loop = true;
+          if (state.video.paused) void state.video.play().catch(() => {});
+        } else state.video.pause();
+        state.empty.textContent = 'Could not display the dropped media.';
         state.empty.hidden = !state.droppedImageFailed;
         continue;
       }
@@ -337,7 +344,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     if (dropTarget?.view === target.view && dropTarget.side === target.side) return true;
     dropTarget = target;
     dropHighlight.className = `preview-drop-highlight preview-drop-${target.side}`;
-    dropHighlight.textContent = `Drop image ${target.side}`;
+    dropHighlight.textContent = `Drop media ${target.side}`;
     target.view.append(dropHighlight);
     return true;
   }
@@ -394,10 +401,14 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   });
   document.addEventListener('dragend', clearDropTarget);
   layout.addEventListener('preview-image-pointer-drag', event => {
-    const { phase, clientX, clientY, src } = event.detail;
+    const { phase, clientX, clientY, src, blob, type, name } = event.detail;
     if (phase === 'move') highlightAt(clientX, clientY);
-    else if (phase === 'drop') event.detail.handled = dropImageAt(clientX, clientY,
-      { src, label: 'WebSocket image' });
+    else if (phase === 'drop') {
+      const ownUrl = blob ? URL.createObjectURL(blob) : src;
+      event.detail.handled = dropImageAt(clientX, clientY,
+        { src: ownUrl, type: type || 'image', label: name || 'WebSocket image', objectUrl: Boolean(blob) });
+      if (!event.detail.handled && blob) URL.revokeObjectURL(ownUrl);
+    }
     else clearDropTarget();
   });
 

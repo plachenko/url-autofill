@@ -2,11 +2,14 @@
   import { onMount } from 'svelte';
   import { websocketImageDataUrl } from '../websocket-image.js';
   import { websocketImageDropEvent } from '../websocket-image-drag.js';
+  import { createFileReceiver } from '../websocket-files.js';
+  import { renderProgressMessage } from '../websocket-render.js';
   import { favoriteServerUrl, loadWebsocketFavorites, saveWebsocketFavorites, websocketServerUrl } from '../websocket-favorites.js';
 
   let serverUrl = '';
   let outgoingText = '';
   let returnText = '';
+  let returnIsFile = false;
   let status = 'Disconnected.';
   let connected = false;
   let connecting = false;
@@ -18,6 +21,14 @@
   let imageDrag = null;
   let imageDropStatus = '';
   let imageDropError = false;
+  let fileReceiver = null;
+  let fileProgress = null;
+  let receivedFile = null;
+  let filePreviewError = '';
+  let renderProgress = null;
+  $: renderPercent = renderProgress?.total ? renderProgress.completed / renderProgress.total * 100 : undefined;
+  $: filePercent = fileProgress?.total ? Math.min(100, fileProgress.received / fileProgress.total * 100) :
+    fileProgress?.state === 'Complete' ? 100 : 0;
   $: normalizedServer = favoriteServerUrl(serverUrl);
   $: isFavorite = favorites.includes(normalizedServer);
 
@@ -29,6 +40,8 @@
     if (serverUrl.trim()) connect();
     return () => {
       endImageDrag();
+      fileReceiver?.dispose();
+      if (receivedFile) URL.revokeObjectURL(receivedFile.url);
       if (socket) {
         socket.onopen = null;
         socket.onmessage = null;
@@ -41,6 +54,9 @@
 
   function disconnect() {
     const current = socket;
+    fileReceiver?.dispose();
+    fileReceiver = null;
+    interruptRender();
     socket = null;
     connected = false;
     connecting = false;
@@ -50,6 +66,7 @@
 
   function connect() {
     if (socket) disconnect();
+    renderProgress = null;
     let endpoint;
     try {
       endpoint = websocketServerUrl(serverUrl);
@@ -60,6 +77,24 @@
     }
 
     const current = socket;
+    const files = createFileReceiver({
+      send: message => { if (socket === current && current.readyState === WebSocket.OPEN) current.send(message); },
+      onProgress: progress => { if (socket === current) fileProgress = progress; },
+      onComplete: file => {
+        if (socket !== current) return;
+        const url = URL.createObjectURL(file.blob);
+        if (receivedFile) URL.revokeObjectURL(receivedFile.url);
+        endImageDrag();
+        imageSrc = '';
+        imageError = '';
+        receivedFile = { name: file.name, mime: file.mime, bytes: file.bytes, url, blob: file.blob };
+        filePreviewError = '';
+        returnText = `Received ${file.name} (${file.bytes.toLocaleString()} bytes). SHA-256 verified.`;
+        returnIsFile = true;
+      }
+    });
+    fileReceiver = files;
+    let messages = Promise.resolve();
     connecting = true;
     status = 'Connecting…';
     current.onopen = () => {
@@ -68,26 +103,42 @@
       connected = true;
       status = 'Connected.';
     };
-    current.onmessage = async (event) => {
-      const value = event.data instanceof Blob ? await event.data.text() :
-        event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data) : String(event.data);
-      if (socket === current) {
+    current.onmessage = (event) => {
+      // Serialize decoding and asynchronous checksum verification in wire order.
+      messages = messages.then(async () => {
+        if (socket !== current) return;
+        const value = event.data instanceof Blob ? await event.data.text() :
+          event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data) : String(event.data);
+        if (socket !== current) return;
+        const rendering = renderProgressMessage(value);
+        if (rendering) { renderProgress = rendering; return; }
+        if (await files.receive(value)) return;
         returnText = value;
+        returnIsFile = false;
         imageSrc = '';
         imageError = '';
         imageDropStatus = '';
-      }
+      }).catch(error => {
+        if (socket === current) status = error.message || 'Could not read the server message.';
+      });
     };
     current.onerror = () => {
       if (socket === current) status = 'WebSocket error. Check the server URL and browser console.';
     };
     current.onclose = () => {
       if (socket !== current) return;
+      files.dispose();
+      interruptRender();
+      fileReceiver = null;
       socket = null;
       connected = false;
       connecting = false;
       if (status !== 'WebSocket error. Check the server URL and browser console.') status = 'Disconnected.';
     };
+  }
+
+  function interruptRender() {
+    if (renderProgress?.state === 'Rendering') renderProgress = { ...renderProgress, state: 'Disconnected' };
   }
 
   function send(event) {
@@ -155,14 +206,15 @@
       { detail: { phase: 'move', clientX: event.clientX, clientY: event.clientY } }));
   }
 
-  function dropImage(event) {
+  async function dropImage(event) {
     if (!imageDrag || event.pointerId !== imageDrag.pointerId) return;
     const previewDrag = { phase: 'drop', clientX: event.clientX,
-      clientY: event.clientY, src: imageDrag.src, handled: false };
+      clientY: event.clientY, src: imageDrag.src, blob: imageDrag.blob,
+      type: imageDrag.type, name: imageDrag.name, handled: false };
     document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-image-pointer-drag',
       { detail: previewDrag }));
     if (previewDrag.handled) {
-      imageDropStatus = 'Image opened in a preview view.';
+      imageDropStatus = 'Media opened in a preview view.';
       imageDropError = false;
       endImageDrag();
       return;
@@ -170,30 +222,35 @@
     const trackList = document.getElementById('track-list');
     const target = document.elementFromPoint(event.clientX, event.clientY);
     if (target && trackList?.contains(target)) {
-      const detail = { src: imageDrag.src, clientX: event.clientX, target, message: '', error: false };
+      const detail = { src: imageDrag.src, blob: imageDrag.blob, clientX: event.clientX, target, message: '', error: false };
       trackList.dispatchEvent(new CustomEvent(websocketImageDropEvent, { detail }));
+      endImageDrag();
+      imageDropStatus = 'Adding media to the timeline…';
+      await detail.done;
       imageDropStatus = detail.message;
       imageDropError = detail.error;
     } else {
-      imageDropStatus = 'Drop the image on a timeline track.';
+      imageDropStatus = 'Drop the media on a timeline track or preview pane.';
       imageDropError = true;
     }
     endImageDrag();
   }
 
-  function startImageDrag(event) {
-    if (!imageSrc || imageDrag || event.button !== 0 || !event.isPrimary) return;
+  function startImageDrag(event, media = null) {
+    const src = media?.url || imageSrc;
+    if (!src || imageDrag || event.button !== 0 || !event.isPrimary) return;
     event.preventDefault();
     imageDropStatus = '';
     if (document.body.classList.contains('render-focus'))
       document.getElementById('timeline-toggle')?.click();
-    const ghost = document.createElement('img');
+    const type = media?.mime.startsWith('video/') ? 'video' : 'image';
+    const ghost = document.createElement(type === 'video' ? 'div' : 'img');
     ghost.className = 'websocket-image-ghost';
-    ghost.src = imageSrc;
-    ghost.alt = '';
+    if (type === 'image') { ghost.src = src; ghost.alt = ''; }
+    else ghost.textContent = media.name;
     ghost.draggable = false;
     document.body.append(ghost);
-    imageDrag = { pointerId: event.pointerId, src: imageSrc, ghost };
+    imageDrag = { pointerId: event.pointerId, src, ghost, type, blob: media?.blob, name: media?.name };
     document.body.classList.add('websocket-image-dragging');
     window.addEventListener('pointermove', moveImageDrag);
     window.addEventListener('pointerup', dropImage);
@@ -221,6 +278,41 @@
     <button type="button" onclick={disconnect} disabled={!socket}>Disconnect</button>
   </div>
   <p role="status" aria-live="polite">{status}</p>
+  {#if renderProgress}
+    <div class="websocket-file-transfer">
+      <label for="websocket-render-progress">Blender render · {renderProgress.scene}</label>
+      <progress id="websocket-render-progress" max="100" value={renderPercent} aria-label="Blender rendering progress"></progress>
+      <p role="status">{renderProgress.state}{renderPercent !== undefined ? ` · ${Math.floor(renderPercent)}% · ${renderProgress.completed} / ${renderProgress.total} frames` : ` · frame ${renderProgress.frame}`}</p>
+    </div>
+  {/if}
+  {#if fileProgress}
+    <div class="websocket-file-transfer">
+      <label for="websocket-file-progress">{fileProgress.name || 'File transfer'}</label>
+      <progress id="websocket-file-progress" max="100" value={filePercent} aria-label="File transfer progress"></progress>
+      <p role="status">{fileProgress.state} · {Math.floor(filePercent)}% · {fileProgress.received.toLocaleString()} / {fileProgress.total.toLocaleString()} bytes</p>
+      {#if fileProgress.error}<p class="websocket-image-error" role="alert">{fileProgress.error}</p>{/if}
+      {#if fileProgress.state === 'Receiving' || fileProgress.state === 'Verifying'}
+        <button type="button" onclick={() => fileReceiver?.cancel(fileProgress.id)}>Cancel transfer</button>
+      {/if}
+    </div>
+  {/if}
+  {#if receivedFile}
+    <div class="websocket-received-file">
+      <a href={receivedFile.url} download={receivedFile.name}>Download {receivedFile.name}</a>
+      {#if receivedFile.mime.startsWith('image/') || receivedFile.mime.startsWith('video/')}
+        <button class="websocket-media-drag" type="button" onpointerdown={event => startImageDrag(event, receivedFile)}>Drag {receivedFile.name} to timeline or preview</button>
+      {/if}
+      {#if receivedFile.mime.startsWith('image/')}
+        <img class="websocket-image" src={receivedFile.url} alt={receivedFile.name} draggable="false" onpointerdown={event => startImageDrag(event, receivedFile)} onerror={() => { filePreviewError = 'Preview unavailable. You can still download this file.'; }}>
+      {:else if receivedFile.mime.startsWith('video/')}
+        <video class="websocket-file-media" src={receivedFile.url} controls aria-label={receivedFile.name} onerror={() => { filePreviewError = 'Preview unavailable. You can still download this file.'; }}><track kind="captions"></video>
+      {:else if receivedFile.mime.startsWith('audio/')}
+        <audio class="websocket-file-media" src={receivedFile.url} controls aria-label={receivedFile.name} onerror={() => { filePreviewError = 'Preview unavailable. You can still download this file.'; }}></audio>
+      {/if}
+      {#if filePreviewError}<p role="status">{filePreviewError}</p>{/if}
+      {#if imageDropStatus}<p class:websocket-image-error={imageDropError} role="status">{imageDropStatus}</p>{/if}
+    </div>
+  {/if}
   <form onsubmit={send}>
     <label for="websocket-text">Text to send</label>
     <textarea id="websocket-text" bind:value={outgoingText} placeholder="Enter text to send"></textarea>
@@ -228,7 +320,7 @@
   </form>
   <label for="websocket-return">Return text</label>
   <textarea id="websocket-return" value={returnText} placeholder="Server replies appear here" readonly></textarea>
-  <button type="button" onclick={renderImage} disabled={!returnText.trim()}>Render image</button>
+  <button type="button" onclick={renderImage} disabled={returnIsFile || !returnText.trim()}>Render image</button>
   {#if imageError}<p class="websocket-image-error" role="alert">{imageError}</p>{/if}
   {#if imageSrc}
     <img class="websocket-image" src={imageSrc} alt="WebSocket server reply" draggable="false" onpointerdown={startImageDrag} onerror={() => { imageSrc = ''; imageError = 'The browser could not display this image.'; }}>
