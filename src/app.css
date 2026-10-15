@@ -448,6 +448,20 @@
   #timeline-import-content #websocket-panel textarea { min-height: 72px; font-size: 14px; }
   #timeline-import-content #websocket-panel button { min-width: 0; overflow-wrap: anywhere; }
   .websocket-save-clip { padding-top: 10px; border-top: 1px solid #7085a1; }
+  .websocket-pointer-control { margin: 12px 0; padding: 8px; border: 1px solid #7085a1;
+    border-radius: 8px; background: #101b2a; }
+  .websocket-pointer-control strong { display: block; }
+  .websocket-pointer-surface { position: relative; height: 160px; overflow: hidden;
+    border: 2px solid #70d8ff; border-radius: 8px; touch-action: none; user-select: none;
+    background-color: #142b3d;
+    background-image: linear-gradient(#70d8ff24 1px, transparent 1px),
+      linear-gradient(90deg, #70d8ff24 1px, transparent 1px);
+    background-size: 25% 25%; cursor: crosshair; }
+  .websocket-pointer-surface.is-disconnected { opacity: .45; pointer-events: none; }
+  .websocket-pointer-marker { position: absolute; display: grid; place-items: center;
+    width: 28px; height: 28px; transform: translate(-50%, -50%); border: 2px solid #10151e;
+    border-radius: 50%; background: #ffd976; color: #10151e; font: 700 11px system-ui, sans-serif;
+    pointer-events: none; }
   #websocket-panel.url-highlight { animation: websocket-highlight 3s ease-out; }
   @keyframes websocket-highlight {
     0%, 55% { border-color: #ffd976; box-shadow: 0 0 0 4px #ffd976aa; }

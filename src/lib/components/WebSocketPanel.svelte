@@ -6,6 +6,7 @@
   import { loadLatestWebSocketFile, saveLatestWebSocketFile } from '../received-media.js';
   import { mediaStorageKey, storeReceivedMedia, storeWholeMedia, validMediaId, validMime } from '../media-store.js';
   import { renderProgressMessage, renderTimeLeft, updateRenderTimeEstimate } from '../websocket-render.js';
+  import { pointerPosition, pointerPositionsMessage } from '../websocket-pointers.js';
   import { favoriteServerUrl, loadWebsocketFavorites, saveWebsocketFavorites, websocketServerUrl } from '../websocket-favorites.js';
 
   let serverUrl = '';
@@ -34,6 +35,12 @@
   let savingClip = false;
   let saveClipStatus = '';
   let saveClipError = false;
+  let pointerSurface;
+  const activePointers = new Map();
+  let pointerMarkers = [];
+  let pointerFrame = 0;
+  let pendingPointerMove = null;
+  let pointerError = '';
   let renderProgress = null;
   let renderTiming = null;
   let renderClock = Date.now();
@@ -53,6 +60,7 @@
     if (serverUrl.trim()) connect();
     return () => {
       window.clearInterval(renderClockTimer);
+      resetPointers(true);
       endImageDrag();
       fileReceiver?.dispose();
       if (receivedFile) URL.revokeObjectURL(receivedFile.url);
@@ -68,6 +76,7 @@
 
   function disconnect() {
     const current = socket;
+    resetPointers(true);
     fileReceiver?.dispose();
     fileReceiver = null;
     interruptRender();
@@ -154,6 +163,7 @@
     };
     current.onclose = () => {
       if (socket !== current) return;
+      resetPointers(false);
       files.dispose();
       interruptRender();
       fileReceiver = null;
@@ -162,6 +172,84 @@
       connecting = false;
       if (status !== 'WebSocket error. Check the server URL and browser console.') status = 'Disconnected.';
     };
+  }
+
+  function sendPointerPositions(phase, changed = null) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify(pointerPositionsMessage(phase, changed, activePointers.values())));
+      pointerError = '';
+    } catch (error) { pointerError = 'Could not send pointer positions.'; }
+  }
+
+  function cancelPendingPointerMove() {
+    if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+    pendingPointerMove = null;
+  }
+
+  function resetPointers(notifyServer) {
+    cancelPendingPointerMove();
+    activePointers.clear();
+    pointerMarkers = [];
+    if (notifyServer) sendPointerPositions('reset');
+  }
+
+  function refreshPointerMarkers() {
+    pointerMarkers = [...activePointers.values()];
+  }
+
+  function queuePointerMove(phase, changed) {
+    pendingPointerMove = { phase, changed };
+    if (pointerFrame) return;
+    pointerFrame = window.requestAnimationFrame(() => {
+      pointerFrame = 0;
+      if (pendingPointerMove) sendPointerPositions(pendingPointerMove.phase, pendingPointerMove.changed);
+      pendingPointerMove = null;
+    });
+  }
+
+  function pointerDown(event) {
+    if (!connected || !pointerSurface) return;
+    event.preventDefault();
+    try { pointerSurface.setPointerCapture(event.pointerId); }
+    catch { /* Pointer events still arrive if capture is unavailable. */ }
+    const position = pointerPosition(event, pointerSurface.getBoundingClientRect());
+    activePointers.set(event.pointerId, position);
+    refreshPointerMarkers();
+    cancelPendingPointerMove();
+    sendPointerPositions('down', position);
+  }
+
+  function pointerMove(event) {
+    if (!connected || !pointerSurface) return;
+    if (!activePointers.has(event.pointerId) && event.pointerType !== 'mouse') return;
+    if (activePointers.has(event.pointerId)) event.preventDefault();
+    const position = pointerPosition(event, pointerSurface.getBoundingClientRect());
+    if (activePointers.has(event.pointerId)) {
+      activePointers.set(event.pointerId, position);
+      refreshPointerMarkers();
+      queuePointerMove('move', position);
+    } else if (event.buttons === 0) queuePointerMove('hover', position);
+  }
+
+  function pointerEnd(event, phase) {
+    if (!activePointers.has(event.pointerId) || !pointerSurface) return;
+    event.preventDefault();
+    const position = pointerPosition(event, pointerSurface.getBoundingClientRect());
+    activePointers.delete(event.pointerId);
+    refreshPointerMarkers();
+    cancelPendingPointerMove();
+    sendPointerPositions(phase, position);
+  }
+
+  function pointerLostCapture(event) {
+    const position = activePointers.get(event.pointerId);
+    if (!position) return;
+    activePointers.delete(event.pointerId);
+    refreshPointerMarkers();
+    cancelPendingPointerMove();
+    sendPointerPositions('cancel', position);
   }
 
   function showReceivedFile(file, endpoint, restored = false) {
@@ -349,6 +437,22 @@
     <button type="button" onclick={disconnect} disabled={!socket}>Disconnect</button>
   </div>
   <p role="status" aria-live="polite">{status}</p>
+  <div class="websocket-pointer-control">
+    <strong>Blender pointers</strong>
+    <p>Touch with multiple fingers, drag a mouse, or use a pen. Positions are relative to this pad. Blender add-on support is required to use them.</p>
+    <div class="websocket-pointer-surface" class:is-disconnected={!connected}
+      role="group" aria-label="Blender pointer surface" bind:this={pointerSurface}
+      onpointerdown={pointerDown} onpointermove={pointerMove}
+      onpointerup={event => pointerEnd(event, 'up')}
+      onpointercancel={event => pointerEnd(event, 'cancel')}
+      onlostpointercapture={pointerLostCapture}>
+      {#each pointerMarkers as pointer (pointer.id)}
+        <span class="websocket-pointer-marker" style={`left:${pointer.x * 100}%;top:${pointer.y * 100}%`}>{pointer.id}</span>
+      {/each}
+    </div>
+    <p role="status">{connected ? `${pointerMarkers.length} active pointer${pointerMarkers.length === 1 ? '' : 's'}` : 'Connect to send pointer positions.'}</p>
+    {#if pointerError}<p class="websocket-image-error" role="alert">{pointerError}</p>{/if}
+  </div>
   {#if renderProgress}
     <div class="websocket-file-transfer">
       <label for="websocket-render-progress">Blender render · {renderProgress.scene}</label>
