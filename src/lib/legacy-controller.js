@@ -968,6 +968,20 @@ import { createPreviewSplits } from './preview-splits.js';
     const compositionImage = document.getElementById('composition-image');
     const compositionImageFrame = document.getElementById('composition-image-frame');
     const compositionVideo = document.getElementById('composition-video');
+    const compositionVideoFrame = document.getElementById('composition-video-frame');
+    function drawCompositionVideoFrame() {
+      if (compositionVideoFrame.hidden || compositionVideo.readyState < 2 ||
+          !compositionVideo.videoWidth || !compositionVideo.videoHeight) return;
+      const scale = Math.min(1, 1920 / compositionVideo.videoWidth, 1080 / compositionVideo.videoHeight);
+      const width = Math.max(1, Math.round(compositionVideo.videoWidth * scale));
+      const height = Math.max(1, Math.round(compositionVideo.videoHeight * scale));
+      if (compositionVideoFrame.width !== width) compositionVideoFrame.width = width;
+      if (compositionVideoFrame.height !== height) compositionVideoFrame.height = height;
+      compositionVideoFrame.getContext('2d')?.drawImage(compositionVideo, 0, 0, width, height);
+    }
+    compositionVideo.addEventListener('loadeddata', drawCompositionVideoFrame);
+    compositionVideo.addEventListener('seeked', drawCompositionVideoFrame);
+    compositionVideo.addEventListener('timeupdate', drawCompositionVideoFrame);
     const compositionEmpty = document.getElementById('composition-empty');
     const compositionError = document.getElementById('composition-error');
     const compositionScrubber = document.getElementById('composition-scrubber');
@@ -1229,7 +1243,25 @@ import { createPreviewSplits } from './preview-splits.js';
             };
             const timeout = window.setTimeout(() => finish(3), 10000);
             probe.preload = 'metadata';
-            probe.onloadedmetadata = () => finish(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 3);
+            const knownDuration = () => {
+              if (Number.isFinite(probe.duration) && probe.duration > 0) return probe.duration;
+              if (probe.seekable.length) {
+                const end = probe.seekable.end(probe.seekable.length - 1);
+                if (Number.isFinite(end) && end > 0) return end;
+              }
+              return null;
+            };
+            probe.onloadedmetadata = () => {
+              const duration = knownDuration();
+              if (duration) finish(duration);
+              else {
+                // Some WebM files reveal their duration only after seeking to the end.
+                try { probe.currentTime = 1e9; } catch { finish(3); }
+              }
+            };
+            probe.onseeked = () => finish(knownDuration() ||
+              (Number.isFinite(probe.currentTime) && probe.currentTime > 0 && probe.currentTime < 86400
+                ? probe.currentTime : 3));
             probe.onerror = () => finish(3);
             probe.src = item.src;
           }));
@@ -1374,6 +1406,9 @@ import { createPreviewSplits } from './preview-splits.js';
         active?.tile?.setAttribute('aria-current', 'true');
         compositionImage.hidden = !active || active.item.type !== 'image';
         compositionVideo.hidden = !active || active.item.type !== 'video';
+        compositionVideoFrame.hidden = compositionVideo.hidden;
+        if (!compositionVideoFrame.hidden)
+          compositionVideoFrame.getContext('2d')?.clearRect(0, 0, compositionVideoFrame.width, compositionVideoFrame.height);
         if (active?.item.type === 'image') {
           imageLoopStarted = performance.now();
           compositionImage.src = active.item.src;
@@ -1405,6 +1440,7 @@ import { createPreviewSplits } from './preview-splits.js';
           compositionVideo.pause();
         session.renderFrameSeconds = session.lockRenderFrame ?
           session.playheadSeconds : active.start + compositionVideo.currentTime - (active.item.sourceOffset || 0) - active.sourceStart;
+        if (compositionPlaying) drawCompositionVideoFrame();
       }
       if (active?.item.type === 'image') {
         const state = imagePreview?.entry === active && imagePreview.ready ? imagePreview : null;

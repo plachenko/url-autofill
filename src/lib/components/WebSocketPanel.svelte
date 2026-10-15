@@ -391,6 +391,31 @@
     window.addEventListener('pointercancel', endImageDrag);
     moveImageDrag(event);
   }
+
+  function videoPoster(canvas, src) {
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    const draw = () => {
+      if (!video.videoWidth || !video.videoHeight) return;
+      const scale = Math.min(1, 960 / video.videoWidth, 540 / video.videoHeight);
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    };
+    video.addEventListener('loadeddata', draw);
+    video.addEventListener('seeked', draw);
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = Math.min(0.1, Math.max(0, video.duration || 0));
+    });
+    video.addEventListener('error', () => { filePreviewError = 'Preview unavailable. You can still download this file.'; });
+    video.src = src;
+    return {
+      update(next) { video.src = next; },
+      destroy() { video.pause(); video.removeAttribute('src'); video.load(); }
+    };
+  }
 </script>
 
 <div id="timeline-import-content" role="tabpanel" aria-labelledby="timeline-import-tab" hidden={!importOpen}>
@@ -448,7 +473,8 @@
       {#if receivedFile.mime.startsWith('image/')}
         <img class="websocket-image" src={receivedFile.url} alt={receivedFile.name} draggable="false" onpointerdown={event => startImageDrag(event, receivedFile)} onerror={() => { filePreviewError = 'Preview unavailable. You can still download this file.'; }}>
       {:else if receivedFile.mime.startsWith('video/')}
-        <video class="websocket-file-media" src={receivedFile.url} controls aria-label={receivedFile.name} onerror={() => { filePreviewError = 'Preview unavailable. You can still download this file.'; }}><track kind="captions"></video>
+        <canvas class="websocket-file-media" aria-label={`Movie frame: ${receivedFile.name}`}
+          use:videoPoster={receivedFile.url}></canvas>
       {:else if receivedFile.mime.startsWith('audio/')}
         <audio class="websocket-file-media" src={receivedFile.url} controls aria-label={receivedFile.name} onerror={() => { filePreviewError = 'Preview unavailable. You can still download this file.'; }}></audio>
       {/if}
