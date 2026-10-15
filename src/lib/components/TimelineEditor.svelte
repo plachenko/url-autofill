@@ -44,10 +44,6 @@
     <p id="timeline-image-status" role="status" aria-live="polite" hidden></p>
   </details>
   <div id="timeline-workspace">
-    <div class="timeline-side-tabs" aria-label="Timeline side tabs">
-      <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"
-        aria-expanded={clipsOpen} aria-pressed={clipsOpen} onclick={() => clipsOpen = !clipsOpen}>Clips</button>
-    </div>
     <aside id="timeline-clips-panel" class:is-importing={clipSection !== 'saved'} aria-label="Clips" hidden={!clipsOpen}>
       <div class="clip-panel-tabs" role="tablist" aria-label="Clip panel" tabindex="-1" onkeydown={switchClipSection}>
         <button id="timeline-saved-tab" type="button" role="tab" aria-controls="timeline-saved-content"
@@ -65,6 +61,10 @@
       </div>
       <WebSocketPanel importOpen={clipsOpen && clipSection === 'import'} pointersOpen={clipsOpen && clipSection === 'pointers'} onConnectionChange={connectionChanged} />
     </aside>
+    <div class="timeline-side-tabs" aria-label="Timeline side tabs">
+      <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"
+        aria-expanded={clipsOpen} aria-pressed={clipsOpen} onclick={() => clipsOpen = !clipsOpen}>Clips</button>
+    </div>
     <div id="track-list" aria-label="Composition tracks">
       <div id="track-content"></div>
     </div>
