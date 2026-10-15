@@ -849,6 +849,8 @@ import { createPreviewSplits } from './preview-splits.js';
     const clipSecondsField = document.getElementById('clip-seconds');
     const clipList = document.getElementById('clip-list');
     const clipStatus = document.getElementById('clip-status');
+    const timelineClipsList = document.getElementById('timeline-clips-list');
+    const timelineClipsStatus = document.getElementById('timeline-clips-status');
     const timelineImageForm = document.getElementById('timeline-image-form');
     const timelineImageId = document.getElementById('timeline-image-id');
     const timelineImageSource = document.getElementById('timeline-image-source');
@@ -872,6 +874,32 @@ import { createPreviewSplits } from './preview-splits.js';
     function clipSeconds() { return Number(clipSecondsField.value); }
     const trackList = document.getElementById('track-list');
     const trackContent = document.getElementById('track-content');
+    trackList.addEventListener('library-clip-drop', async event => {
+      const { id, clientX, target } = event.detail;
+      try {
+        if (tracks.flat().length >= 100)
+          throw new Error('The compositor supports up to 100 clips.');
+        const row = target.closest('.track-row[data-track]');
+        const lane = row?.querySelector('.track-lane');
+        if (!lane) throw new Error('Drop the clip on a timeline track.');
+        const track = tracks[Number(lane.dataset.track)];
+        if (!track) throw new Error('That track is no longer available.');
+        const item = await clipDetail(id);
+        const trackIndex = tracks.indexOf(track);
+        if (trackIndex < 0) throw new Error('That track is no longer available.');
+        const start = Math.min(86400, roundTime(Math.max(0, snappedClipStart(
+          (clientX - lane.getBoundingClientRect().left) / timelineScale, item.duration))));
+        track.push({ id, start });
+        activeTrack = trackIndex;
+        saveTracks();
+        void refreshCompositor();
+        timelineClipsStatus.textContent = `Added ${id} to track ${trackIndex + 1} at ${start.toFixed(2)}s.`;
+        timelineClipsStatus.classList.remove('error');
+      } catch (error) {
+        timelineClipsStatus.textContent = error.message || 'Could not add the clip.';
+        timelineClipsStatus.classList.add('error');
+      }
+    });
     trackList.addEventListener(websocketImageDropEvent, event => {
       event.detail.done = (async () => {
       try {
@@ -2451,9 +2479,154 @@ import { createPreviewSplits } from './preview-splits.js';
       }
       refreshClipList();
     }
+    function makeTimelineClipCard(clip) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'timeline-clip-card';
+      card.setAttribute('aria-label', `Drag ${clip.id} to a track or preview; tap to add to the active track`);
+      const item = loadMedia(clip.id);
+      const frame = document.createElement(item.type === 'video' ? 'video' : 'img');
+      frame.src = item.src;
+      frame.draggable = false;
+      if (item.type === 'video') {
+        frame.muted = true;
+        frame.playsInline = true;
+        frame.preload = 'metadata';
+        frame.addEventListener('loadedmetadata', () => {
+          frame.currentTime = Number.isFinite(frame.duration)
+            ? Math.min(.1, frame.duration / 2) : .1;
+        }, { once: true });
+      } else frame.alt = '';
+      const label = document.createElement('span');
+      label.textContent = `${clip.id} · ${item.type}`;
+      card.append(frame, label);
+      let suppressClick = false;
+      card.addEventListener('click', event => {
+        if (suppressClick) { event.preventDefault(); return; }
+        void addClipToTrack(clip.id);
+      });
+      function createGhost() {
+        suppressClick = true;
+        const ghost = document.createElement('div');
+        ghost.className = 'clip-library-ghost';
+        ghost.textContent = clip.id;
+        document.body.append(ghost);
+        return ghost;
+      }
+      function moveGhost(ghost, x, y) {
+        ghost.style.left = `${x + 12}px`;
+        ghost.style.top = `${y + 12}px`;
+        const target = document.elementFromPoint(x, y);
+        trackContent.querySelectorAll('.clip-library-drop-target').forEach(row =>
+          row.classList.remove('clip-library-drop-target'));
+        target?.closest('#track-list .track-row[data-track]')?.classList.add('clip-library-drop-target');
+        document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag',
+          { detail: { phase: 'move', clientX: x, clientY: y } }));
+      }
+      function clearDragHighlight() {
+        trackContent.querySelectorAll('.clip-library-drop-target').forEach(row =>
+          row.classList.remove('clip-library-drop-target'));
+        document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag',
+          { detail: { phase: 'end' } }));
+      }
+      function dropAt(x, y) {
+        const previewLayout = document.getElementById('preview-layout');
+        const detail = { phase: 'drop', clientX: x, clientY: y, id: clip.id, handled: false };
+        previewLayout?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag', { detail }));
+        if (detail.handled) {
+          timelineClipsStatus.textContent = `Opened ${clip.id} in a preview view.`;
+          timelineClipsStatus.classList.remove('error');
+          return;
+        }
+        const target = document.elementFromPoint(x, y);
+        if (target && trackList.contains(target) && target.closest('.track-row[data-track]'))
+          trackList.dispatchEvent(new CustomEvent('library-clip-drop',
+            { detail: { id: clip.id, clientX: x, target } }));
+        else {
+          timelineClipsStatus.textContent = 'Drop the clip on a timeline track or preview view.';
+          timelineClipsStatus.classList.add('error');
+        }
+      }
+      card.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
+        card.setPointerCapture(event.pointerId);
+        const startX = event.clientX;
+        const startY = event.clientY;
+        let ghost = null;
+        function move(moveEvent) {
+          if (moveEvent.pointerId !== event.pointerId) return;
+          if (!ghost && Math.hypot(moveEvent.clientX - startX,
+              moveEvent.clientY - startY) < 6) return;
+          if (!ghost) ghost = createGhost();
+          moveEvent.preventDefault();
+          moveGhost(ghost, moveEvent.clientX, moveEvent.clientY);
+        }
+        function end(endEvent) {
+          if (endEvent.pointerId !== event.pointerId) return;
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', end);
+          window.removeEventListener('pointercancel', end);
+          ghost?.remove();
+          if (ghost && endEvent.type === 'pointerup') dropAt(endEvent.clientX, endEvent.clientY);
+          clearDragHighlight();
+          window.setTimeout(() => { suppressClick = false; }, 0);
+        }
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+      });
+      card.addEventListener('touchstart', event => {
+        if (event.touches.length !== 1) return;
+        const touch = event.touches[0];
+        const startX = touch.clientX;
+        const startY = touch.clientY;
+        const touchId = touch.identifier;
+        let ghost = null;
+        let holdTimer = window.setTimeout(() => {
+          holdTimer = 0;
+          ghost = createGhost();
+          moveGhost(ghost, startX, startY);
+        }, 300);
+        const matchingTouch = changed => Array.from(changed).find(value => value.identifier === touchId);
+        function cleanup() {
+          window.clearTimeout(holdTimer);
+          window.removeEventListener('touchmove', move);
+          window.removeEventListener('touchend', end);
+          window.removeEventListener('touchcancel', end);
+        }
+        function move(moveEvent) {
+          const current = matchingTouch(moveEvent.changedTouches);
+          if (!current) return;
+          if (!ghost) {
+            if (Math.hypot(current.clientX - startX, current.clientY - startY) > 8)
+              cleanup();
+            return;
+          }
+          moveEvent.preventDefault();
+          moveGhost(ghost, current.clientX, current.clientY);
+        }
+        function end(endEvent) {
+          const current = matchingTouch(endEvent.changedTouches);
+          if (!current) return;
+          cleanup();
+          if (ghost) {
+            endEvent.preventDefault();
+            ghost.remove();
+            if (endEvent.type === 'touchend') dropAt(current.clientX, current.clientY);
+            clearDragHighlight();
+            window.setTimeout(() => { suppressClick = false; }, 500);
+          }
+        }
+        window.addEventListener('touchmove', move, { passive: false });
+        window.addEventListener('touchend', end, { passive: false });
+        window.addEventListener('touchcancel', end);
+      }, { passive: true });
+      return card;
+    }
     function refreshClipList() {
       clipList.replaceChildren();
       timelineImageList.replaceChildren();
+      timelineClipsList.replaceChildren();
       try {
         const clips = [];
         for (let index = 0; index < window.localStorage.length; index++) {
@@ -2479,9 +2652,14 @@ import { createPreviewSplits } from './preview-splits.js';
         if (!clips.length) {
           clipList.textContent = 'No clips saved yet.';
           timelineImageList.textContent = 'No image clips saved.';
+          timelineClipsList.textContent = 'No saved clips yet.';
           return;
         }
         for (const clip of clips) {
+          if (clip.parts === clip.total) {
+            try { timelineClipsList.append(makeTimelineClipCard(clip)); }
+            catch (error) { /* Leave unreadable clips out of the drag panel. */ }
+          }
           if (clip.mime.startsWith('image/')) {
             const imageAdd = document.createElement('button');
             imageAdd.type = 'button';
@@ -2534,9 +2712,12 @@ import { createPreviewSplits } from './preview-splits.js';
         }
         if (!timelineImageList.childElementCount)
           timelineImageList.textContent = 'No image clips saved.';
+        if (!timelineClipsList.childElementCount)
+          timelineClipsList.textContent = 'No complete clips available.';
       } catch (error) {
         clipList.textContent = 'Clip storage is unavailable in this browser.';
         timelineImageList.textContent = 'Clip storage is unavailable.';
+        timelineClipsList.textContent = 'Clip storage is unavailable.';
       }
     }
     let pastedTimelineImage = null;

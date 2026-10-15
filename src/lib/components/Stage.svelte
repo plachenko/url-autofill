@@ -3,6 +3,7 @@
   import MinimalDisplay from "./MinimalDisplay.svelte";
   import RenderSurface from "./RenderSurface.svelte";
 </script>
+
 <main id="stage">
   <ScreenplayWorkspace />
   <MinimalDisplay />

@@ -13,6 +13,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   let clipLoopFrame = 0;
   let restored = false;
   let dropTarget = null;
+  let primaryOverride = null;
   const dropHighlight = document.createElement('div');
   dropHighlight.className = 'preview-drop-highlight';
   dropHighlight.setAttribute('aria-hidden', 'true');
@@ -106,6 +107,10 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     video.muted = true;
     video.playsInline = true;
     video.hidden = true;
+    video.addEventListener('error', () => {
+      viewState.get(view).droppedImageFailed = true;
+      sync(true);
+    });
     const empty = document.createElement('span');
     empty.className = 'preview-source-empty';
     surface.append(image, video, empty);
@@ -115,12 +120,15 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
       const state = viewState.get(view);
       state.clipStartedAt = performance.now();
       state.clipRef = null;
+      state.droppedImageFailed = false;
       state.sourceRef = sourceReference(select.value, getSnapshot().tracks);
       persist();
       sync(true);
     });
-    video.addEventListener('loadedmetadata', () => sync(true));
-    video.addEventListener('error', () => { viewState.get(view).droppedImageFailed = true; sync(true); });
+    video.addEventListener('loadedmetadata', () => {
+      viewState.get(view).droppedImageFailed = false;
+      sync(true);
+    });
     viewState.set(view, { select, image, video, empty, droppedImage, droppedImageFailed: false,
       clipRef: null,
       clipStartedAt: performance.now() });
@@ -145,34 +153,54 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     divider.setAttribute('tabindex', '0');
     divider.setAttribute('aria-orientation', direction);
     divider.setAttribute('aria-label', direction === 'vertical'
-      ? 'Resize preview views horizontally' : 'Resize preview views vertically');
-    divider.setAttribute('aria-valuemin', '15');
-    divider.setAttribute('aria-valuemax', '85');
+      ? 'Resize preview views horizontally; drag a view to the edge to close it'
+      : 'Resize preview views vertically; drag a view to the edge to close it');
+    divider.setAttribute('aria-valuemin', '0');
+    divider.setAttribute('aria-valuemax', '100');
     divider.setAttribute('aria-valuenow', String(ratio));
-    function setRatio(value) {
-      const next = Math.max(15, Math.min(85, value));
+    function closableView(branch) {
+      const child = branch.firstElementChild;
+      return child?.classList.contains('preview-view') && child !== primary ? child : null;
+    }
+    function setRatio(value, dragging = false) {
+      const firstClosable = dragging && closableView(firstBranch);
+      const secondClosable = dragging && closableView(secondBranch);
+      const next = Math.max(firstClosable ? 0 : 15,
+        Math.min(secondClosable ? 100 : 85, value));
       split.dataset.ratio = String(next);
       split.style.setProperty('--split-ratio', `${next}%`);
       divider.setAttribute('aria-valuenow', String(Math.round(next)));
+      split.classList.toggle('is-closing-first', Boolean(firstClosable && next <= 12));
+      split.classList.toggle('is-closing-second', Boolean(secondClosable && next >= 88));
       onLayoutChange();
     }
     divider.addEventListener('pointerdown', event => {
       if (event.button !== 0) return;
       event.preventDefault();
       divider.setPointerCapture(event.pointerId);
+      const startingRatio = Number(split.dataset.ratio);
       const move = moveEvent => {
         if (moveEvent.pointerId !== event.pointerId) return;
         const bounds = split.getBoundingClientRect();
         const position = direction === 'vertical' ? moveEvent.clientX - bounds.left
           : moveEvent.clientY - bounds.top;
         const size = direction === 'vertical' ? bounds.width : bounds.height;
-        if (size) setRatio(position / size * 100);
+        if (size) setRatio(position / size * 100, true);
       };
       const end = endEvent => {
         if (endEvent.pointerId !== event.pointerId) return;
         divider.removeEventListener('pointermove', move);
         divider.removeEventListener('pointerup', end);
         divider.removeEventListener('pointercancel', end);
+        if (endEvent.type === 'pointercancel') {
+          setRatio(startingRatio);
+          return;
+        }
+        const closing = split.classList.contains('is-closing-first')
+          ? closableView(firstBranch) : split.classList.contains('is-closing-second')
+            ? closableView(secondBranch) : null;
+        if (closing) { closeView(closing); return; }
+        setRatio(Number(split.dataset.ratio));
         persist();
       };
       divider.addEventListener('pointermove', move);
@@ -212,9 +240,8 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     splitView(active, direction);
   }
 
-  function closeActive() {
-    if (active === primary) return;
-    const closing = active;
+  function closeView(closing) {
+    if (!closing || closing === primary || !views.has(closing)) return;
     const branch = closing.parentElement;
     const split = branch.parentElement;
     const sibling = split.children[branch === split.children[0] ? 2 : 0].firstElementChild;
@@ -224,10 +251,16 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     views.delete(closing);
     split.replaceWith(sibling);
     onLayoutChange();
-    selectView(sibling.classList.contains('preview-view')
-      ? sibling : sibling.querySelector('.preview-view'));
+    const nextActive = active === closing
+      ? sibling.classList.contains('preview-view') ? sibling : sibling.querySelector('.preview-view')
+      : active;
+    selectView(nextActive);
     persist();
     sync(true);
+  }
+
+  function closeActive() {
+    closeView(active);
   }
 
   function sync(seek = false) {
@@ -238,16 +271,20 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
       const state = viewState.get(view);
       const source = state.select.value;
       if (source === 'dropped-image' && state.droppedImage) {
-        const dropped = state.droppedImage;
-        const isVideo = dropped.type === 'video';
-        const element = isVideo ? state.video : state.image;
-        if (element.src !== dropped.src) element.src = dropped.src;
-        state.image.hidden = isVideo || state.droppedImageFailed;
-        state.video.hidden = !isVideo || state.droppedImageFailed;
-        if (isVideo && !state.droppedImageFailed) {
+        if (state.droppedImage.type === 'video') {
+          if (state.video.src !== state.droppedImage.src) state.video.src = state.droppedImage.src;
           state.video.loop = true;
-          if (state.video.paused) void state.video.play().catch(() => {});
-        } else state.video.pause();
+          state.video.controls = true;
+          state.video.hidden = state.droppedImageFailed;
+          state.image.hidden = true;
+          if (!state.droppedImageFailed && state.video.paused)
+            void state.video.play().catch(() => {});
+        } else {
+          if (state.image.src !== state.droppedImage.src) state.image.src = state.droppedImage.src;
+          state.image.hidden = state.droppedImageFailed;
+          state.video.hidden = true;
+          state.video.pause();
+        }
         state.empty.textContent = 'Could not display the dropped media.';
         state.empty.hidden = !state.droppedImageFailed;
         continue;
@@ -284,6 +321,8 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
         continue;
       }
       const video = state.video;
+      video.loop = false;
+      video.controls = false;
       if (video.readyState < 1) continue;
       const target = entry.sourceStart + previewTime - entry.start;
       if (seek || Math.abs(video.currentTime - target) > (independentClip ? .2 : .08))
@@ -320,7 +359,6 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   }
 
   function targetAt(clientX, clientY) {
-    if (views.size >= maxViews) return null;
     const view = document.elementFromPoint(clientX, clientY)?.closest('.preview-view');
     if (!view || !views.has(view)) return null;
     const bounds = view.getBoundingClientRect();
@@ -328,8 +366,10 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     const y = (clientY - bounds.top) / bounds.height;
     if (x < 0 || x > 1 || y < 0 || y > 1) return null;
     const distances = { left: x, right: 1 - x, top: y, bottom: 1 - y };
-    const side = Object.keys(distances).reduce((nearest, candidate) =>
-      distances[candidate] < distances[nearest] ? candidate : nearest);
+    const side = x >= .3 && x <= .7 && y >= .3 && y <= .7 ? 'center' :
+      Object.keys(distances).reduce((nearest, candidate) =>
+        distances[candidate] < distances[nearest] ? candidate : nearest);
+    if (side !== 'center' && views.size >= maxViews) return null;
     return { view, side };
   }
 
@@ -344,17 +384,80 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     if (dropTarget?.view === target.view && dropTarget.side === target.side) return true;
     dropTarget = target;
     dropHighlight.className = `preview-drop-highlight preview-drop-${target.side}`;
-    dropHighlight.textContent = `Drop media ${target.side}`;
+    dropHighlight.textContent = target.side === 'center' ? 'Replace view' : `Split ${target.side}`;
     target.view.append(dropHighlight);
     return true;
   }
 
-  function dropImageAt(clientX, clientY, image) {
+  function clearPrimaryOverride() {
+    if (!primaryOverride) return;
+    primaryOverride.video?.pause();
+    primaryOverride.root.remove();
+    if (primaryOverride.media.objectUrl) URL.revokeObjectURL(primaryOverride.media.src);
+    primaryOverride = null;
+  }
+
+  function replacePrimary(media) {
+    clearPrimaryOverride();
+    const root = document.createElement('div');
+    root.className = 'preview-primary-override';
+    const visible = document.createElement(media.type === 'video' ? 'video' : 'img');
+    visible.src = media.src;
+    if (media.type === 'video') {
+      visible.muted = true;
+      visible.playsInline = true;
+      visible.loop = true;
+      visible.controls = true;
+    } else visible.alt = media.label || 'Dropped clip';
+    const error = document.createElement('span');
+    error.className = 'preview-source-empty';
+    error.textContent = 'Could not display the dropped clip.';
+    error.hidden = true;
+    visible.addEventListener('error', () => {
+      visible.hidden = true;
+      error.hidden = false;
+    });
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'preview-return-button';
+    restore.textContent = 'Timeline';
+    restore.setAttribute('aria-label', 'Return to timeline preview');
+    restore.addEventListener('click', clearPrimaryOverride);
+    root.append(visible, error, restore);
+    primary.append(root);
+    primaryOverride = { root, media, video: media.type === 'video' ? visible : null };
+    if (media.type === 'video') void visible.play().catch(() => {});
+    selectView(primary);
+  }
+
+  function replaceView(view, media) {
+    if (view === primary) { replacePrimary(media); return; }
+    const state = viewState.get(view);
+    state.video.pause();
+    state.video.removeAttribute('src');
+    state.image.removeAttribute('src');
+    if (state.droppedImage?.objectUrl) URL.revokeObjectURL(state.droppedImage.src);
+    state.droppedImage = media;
+    state.droppedImageFailed = false;
+    state.clipRef = null;
+    state.clipStartedAt = performance.now();
+    state.sourceRef = null;
+    sourceOptions(state.select, 'dropped-image', media);
+    selectView(view);
+    persist();
+    sync(true);
+  }
+
+  function dropMediaAt(clientX, clientY, media) {
     const target = targetAt(clientX, clientY);
     clearDropTarget();
-    if (!target || !image?.src) return false;
+    if (!target || !media?.src) return false;
+    if (target.side === 'center') {
+      replaceView(target.view, media);
+      return true;
+    }
     splitView(target.view, target.side === 'left' || target.side === 'right'
-      ? 'vertical' : 'horizontal', 'dropped-image', target.side, image);
+      ? 'vertical' : 'horizontal', 'dropped-image', target.side, media);
     return true;
   }
 
@@ -396,7 +499,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     if (!dragHasImage(event)) return;
     event.preventDefault();
     const image = imageFromDrop(event.dataTransfer);
-    if (!dropImageAt(event.clientX, event.clientY, image) && image?.objectUrl)
+    if (!dropMediaAt(event.clientX, event.clientY, image) && image?.objectUrl)
       URL.revokeObjectURL(image.src);
   });
   document.addEventListener('dragend', clearDropTarget);
@@ -405,11 +508,22 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     if (phase === 'move') highlightAt(clientX, clientY);
     else if (phase === 'drop') {
       const ownUrl = blob ? URL.createObjectURL(blob) : src;
-      event.detail.handled = dropImageAt(clientX, clientY,
+      event.detail.handled = dropMediaAt(clientX, clientY,
         { src: ownUrl, type: type || 'image', label: name || 'WebSocket image', objectUrl: Boolean(blob) });
       if (!event.detail.handled && blob) URL.revokeObjectURL(ownUrl);
     }
     else clearDropTarget();
+  });
+  layout.addEventListener('preview-clip-pointer-drag', event => {
+    const { phase, clientX, clientY, id } = event.detail;
+    if (phase === 'move') highlightAt(clientX, clientY);
+    else if (phase === 'drop') {
+      try {
+        const item = resolveImage(id);
+        event.detail.handled = dropMediaAt(clientX, clientY,
+          { src: item.src, type: item.type, label: `Clip ${id}` });
+      } catch (error) { clearDropTarget(); }
+    } else clearDropTarget();
   });
 
   primary.addEventListener('pointerdown', () => selectView(primary));
