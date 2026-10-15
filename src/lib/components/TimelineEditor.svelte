@@ -44,26 +44,28 @@
     <p id="timeline-image-status" role="status" aria-live="polite" hidden></p>
   </details>
   <div id="timeline-workspace">
-    <aside id="timeline-clips-panel" class:is-importing={clipSection !== 'saved'} aria-label="Clips" hidden={!clipsOpen}>
-      <div class="clip-panel-tabs" role="tablist" aria-label="Clip panel" tabindex="-1" onkeydown={switchClipSection}>
-        <button id="timeline-saved-tab" type="button" role="tab" aria-controls="timeline-saved-content"
-          aria-selected={clipSection === 'saved'} onclick={() => clipSection = 'saved'}>Saved</button>
-        <button id="timeline-import-tab" type="button" role="tab" aria-controls="timeline-import-content"
-          aria-selected={clipSection === 'import'} onclick={() => { clipsOpen = true; clipSection = 'import'; }}>Import</button>
-        {#if pointerAvailable}
-          <button id="timeline-pointers-tab" type="button" role="tab" aria-controls="timeline-pointers-content"
-            aria-selected={clipSection === 'pointers'} onclick={() => clipSection = 'pointers'}>Pointers</button>
-        {/if}
+    <div id="timeline-gutter-rail">
+      <aside id="timeline-clips-panel" class:is-importing={clipSection !== 'saved'} aria-label="Clips" hidden={!clipsOpen}>
+        <div class="clip-panel-tabs" role="tablist" aria-label="Clip panel" tabindex="-1" onkeydown={switchClipSection}>
+          <button id="timeline-saved-tab" type="button" role="tab" aria-controls="timeline-saved-content"
+            aria-selected={clipSection === 'saved'} onclick={() => clipSection = 'saved'}>Saved</button>
+          <button id="timeline-import-tab" type="button" role="tab" aria-controls="timeline-import-content"
+            aria-selected={clipSection === 'import'} onclick={() => { clipsOpen = true; clipSection = 'import'; }}>Import</button>
+          {#if pointerAvailable}
+            <button id="timeline-pointers-tab" type="button" role="tab" aria-controls="timeline-pointers-content"
+              aria-selected={clipSection === 'pointers'} onclick={() => clipSection = 'pointers'}>Pointers</button>
+          {/if}
+        </div>
+        <div id="timeline-saved-content" role="tabpanel" aria-labelledby="timeline-saved-tab" hidden={clipSection !== 'saved'}>
+          <div id="timeline-clips-list"></div>
+          <p id="timeline-clips-status" role="status" aria-live="polite"></p>
+        </div>
+        <WebSocketPanel importOpen={clipsOpen && clipSection === 'import'} pointersOpen={clipsOpen && clipSection === 'pointers'} onConnectionChange={connectionChanged} />
+      </aside>
+      <div class="timeline-side-tabs" aria-label="Timeline side tabs">
+        <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"
+          aria-expanded={clipsOpen} aria-pressed={clipsOpen} onclick={() => clipsOpen = !clipsOpen}>Clips</button>
       </div>
-      <div id="timeline-saved-content" role="tabpanel" aria-labelledby="timeline-saved-tab" hidden={clipSection !== 'saved'}>
-        <div id="timeline-clips-list"></div>
-        <p id="timeline-clips-status" role="status" aria-live="polite"></p>
-      </div>
-      <WebSocketPanel importOpen={clipsOpen && clipSection === 'import'} pointersOpen={clipsOpen && clipSection === 'pointers'} onConnectionChange={connectionChanged} />
-    </aside>
-    <div class="timeline-side-tabs" aria-label="Timeline side tabs">
-      <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"
-        aria-expanded={clipsOpen} aria-pressed={clipsOpen} onclick={() => clipsOpen = !clipsOpen}>Clips</button>
     </div>
     <div id="track-list" aria-label="Composition tracks">
       <div id="track-content"></div>
