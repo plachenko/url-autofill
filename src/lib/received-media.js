@@ -29,6 +29,21 @@ export async function receivedBlob(id) {
   if (!(blob instanceof Blob)) throw new Error('Received clip data is missing from this browser.');
   return blob;
 }
+
+const latestWebSocketFileKey = 'latestWebSocketFile';
+
+export async function saveLatestWebSocketFile(file, endpoint) {
+  await transaction('readwrite', store => store.put({
+    endpoint, name: file.name, mime: file.mime, bytes: file.bytes, blob: file.blob
+  }, latestWebSocketFileKey));
+}
+
+export async function loadLatestWebSocketFile(endpoint) {
+  const file = await transaction('readonly', store => store.get(latestWebSocketFileKey));
+  return file?.endpoint === endpoint && file.blob instanceof Blob &&
+    typeof file.name === 'string' && typeof file.mime === 'string' &&
+    Number.isSafeInteger(file.bytes) && file.bytes === file.blob.size ? file : null;
+}
 export async function receivedBlobUrl(id) {
   if (!urls.has(id)) urls.set(id, URL.createObjectURL(await receivedBlob(id)));
   return urls.get(id);

@@ -3,7 +3,8 @@
   import { websocketImageDataUrl } from '../websocket-image.js';
   import { websocketImageDropEvent } from '../websocket-image-drag.js';
   import { createFileReceiver } from '../websocket-files.js';
-  import { renderProgressMessage } from '../websocket-render.js';
+  import { loadLatestWebSocketFile, saveLatestWebSocketFile } from '../received-media.js';
+  import { renderProgressMessage, renderTimeLeft, updateRenderTimeEstimate } from '../websocket-render.js';
   import { favoriteServerUrl, loadWebsocketFavorites, saveWebsocketFavorites, websocketServerUrl } from '../websocket-favorites.js';
 
   let serverUrl = '';
@@ -25,20 +26,27 @@
   let fileProgress = null;
   let receivedFile = null;
   let filePreviewError = '';
+  let fileRetentionError = '';
+  let fileGeneration = 0;
   let renderProgress = null;
+  let renderTiming = null;
+  let renderClock = Date.now();
   $: renderPercent = renderProgress?.total ? renderProgress.completed / renderProgress.total * 100 : undefined;
+  $: timeLeft = renderTimeLeft(renderTiming, renderClock);
   $: filePercent = fileProgress?.total ? Math.min(100, fileProgress.received / fileProgress.total * 100) :
     fileProgress?.state === 'Complete' ? 100 : 0;
   $: normalizedServer = favoriteServerUrl(serverUrl);
   $: isFavorite = favorites.includes(normalizedServer);
 
   onMount(() => {
+    const renderClockTimer = window.setInterval(() => { renderClock = Date.now(); }, 1000);
     favorites = loadWebsocketFavorites(window.localStorage);
     const params = new URL(window.location.href).searchParams;
     serverUrl = params.get('ws') ?? '';
     outgoingText = params.get('wsText') ?? '';
     if (serverUrl.trim()) connect();
     return () => {
+      window.clearInterval(renderClockTimer);
       endImageDrag();
       fileReceiver?.dispose();
       if (receivedFile) URL.revokeObjectURL(receivedFile.url);
@@ -67,6 +75,9 @@
   function connect() {
     if (socket) disconnect();
     renderProgress = null;
+    renderTiming = null;
+    fileProgress = null;
+    fileRetentionError = '';
     let endpoint;
     try {
       endpoint = websocketServerUrl(serverUrl);
@@ -76,21 +87,22 @@
       return;
     }
 
+    if (receivedFile?.endpoint !== endpoint && receivedFile) {
+      URL.revokeObjectURL(receivedFile.url);
+      receivedFile = null;
+    }
+    const restoreGeneration = ++fileGeneration;
+
     const current = socket;
     const files = createFileReceiver({
       send: message => { if (socket === current && current.readyState === WebSocket.OPEN) current.send(message); },
       onProgress: progress => { if (socket === current) fileProgress = progress; },
       onComplete: file => {
         if (socket !== current) return;
-        const url = URL.createObjectURL(file.blob);
-        if (receivedFile) URL.revokeObjectURL(receivedFile.url);
-        endImageDrag();
-        imageSrc = '';
-        imageError = '';
-        receivedFile = { name: file.name, mime: file.mime, bytes: file.bytes, url, blob: file.blob };
-        filePreviewError = '';
-        returnText = `Received ${file.name} (${file.bytes.toLocaleString()} bytes). SHA-256 verified.`;
-        returnIsFile = true;
+        ++fileGeneration;
+        showReceivedFile(file, endpoint);
+        void saveLatestWebSocketFile(file, endpoint).then(() => { fileRetentionError = ''; })
+          .catch(() => { fileRetentionError = 'This browser could not keep the file for a reload. Download it now.'; });
       }
     });
     fileReceiver = files;
@@ -102,6 +114,10 @@
       connecting = false;
       connected = true;
       status = 'Connected.';
+      if (!receivedFile) void loadLatestWebSocketFile(endpoint).then(file => {
+        if (file && socket === current && fileGeneration === restoreGeneration && !receivedFile && !fileProgress)
+          showReceivedFile(file, endpoint, true);
+      }).catch(() => { /* A live transfer still works when stored files are unavailable. */ });
     };
     current.onmessage = (event) => {
       // Serialize decoding and asynchronous checksum verification in wire order.
@@ -111,7 +127,12 @@
           event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data) : String(event.data);
         if (socket !== current) return;
         const rendering = renderProgressMessage(value);
-        if (rendering) { renderProgress = rendering; return; }
+        if (rendering) {
+          renderClock = Date.now();
+          renderTiming = updateRenderTimeEstimate(renderTiming, rendering, renderClock);
+          renderProgress = rendering;
+          return;
+        }
         if (await files.receive(value)) return;
         returnText = value;
         returnIsFile = false;
@@ -137,8 +158,20 @@
     };
   }
 
+  function showReceivedFile(file, endpoint, restored = false) {
+    if (receivedFile) URL.revokeObjectURL(receivedFile.url);
+    endImageDrag();
+    imageSrc = '';
+    imageError = '';
+    receivedFile = { ...file, endpoint, restored, url: URL.createObjectURL(file.blob) };
+    filePreviewError = '';
+    returnText = `${restored ? 'Previously received' : 'Received'} ${file.name} (${file.bytes.toLocaleString()} bytes). ${restored ? 'Saved in this browser.' : 'SHA-256 verified.'}`;
+    returnIsFile = true;
+  }
+
   function interruptRender() {
     if (renderProgress?.state === 'Rendering') renderProgress = { ...renderProgress, state: 'Disconnected' };
+    renderTiming = null;
   }
 
   function send(event) {
@@ -283,6 +316,12 @@
       <label for="websocket-render-progress">Blender render · {renderProgress.scene}</label>
       <progress id="websocket-render-progress" max="100" value={renderPercent} aria-label="Blender rendering progress"></progress>
       <p role="status">{renderProgress.state}{renderPercent !== undefined ? ` · ${Math.floor(renderPercent)}% · ${renderProgress.completed} / ${renderProgress.total} frames` : ` · frame ${renderProgress.frame}`}</p>
+      {#if renderProgress.state === 'Complete' && !receivedFile && !fileProgress}
+        <p role="status">Render finished, but no file was received. A reconnect restores the render status; Blender must also send the file to this connection.</p>
+      {/if}
+      {#if renderProgress.state === 'Rendering' && renderProgress.total && renderProgress.completed < renderProgress.total}
+        <p aria-live="off">{timeLeft ? `Estimated time left: ${timeLeft}` : renderTiming?.finishAt ? 'Updating time estimate…' : 'Estimating time left…'}</p>
+      {/if}
     </div>
   {/if}
   {#if fileProgress}
@@ -298,7 +337,9 @@
   {/if}
   {#if receivedFile}
     <div class="websocket-received-file">
+      {#if receivedFile.restored}<p>Last file received from this server, restored from this browser.</p>{/if}
       <a href={receivedFile.url} download={receivedFile.name}>Download {receivedFile.name}</a>
+      {#if fileRetentionError}<p class="websocket-image-error" role="alert">{fileRetentionError}</p>{/if}
       {#if receivedFile.mime.startsWith('image/') || receivedFile.mime.startsWith('video/')}
         <button class="websocket-media-drag" type="button" onpointerdown={event => startImageDrag(event, receivedFile)}>Drag {receivedFile.name} to timeline or preview</button>
       {/if}
