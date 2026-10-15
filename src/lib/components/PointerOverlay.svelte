@@ -24,7 +24,8 @@
   $: pointerSettings = scene.catalog?.pointer || {};
   $: sceneLocked = Boolean(pointerSettings.recording || pointerSettings.rendering);
   $: selectedObject = scene.catalog?.objects.find(object => object.id === scene.selectedId);
-  $: pointerReady = !scene.pending && (!scene.catalog ||
+  $: sceneSyncing = Boolean(scene.catalog && scene.catalog.revision < scene.acceptedRevision);
+  $: pointerReady = !sceneSyncing && !scene.pending && (!scene.catalog ||
     (pointerSettings.enabled && (!scene.selectedId || scene.selectedId === scene.attachedId)));
   $: effectivePlane = scene.catalog && pointerSettings.use_browser_plane === false
     ? pointerSettings.plane : ({ x: 'YZ', y: 'XZ', z: 'XY' })[plane];
@@ -165,7 +166,7 @@
         <span class="websocket-pointer-marker" style={`left:${pointer.x * 100}%;top:${pointer.y * 100}%`}>{pointer.id}</span>
       {/each}
       <span class="pointer-overlay-hint">Blender pointers · {pointerMarkers.length} active · {effectivePlane} plane
-        {#if !pointerReady} · {scene.pending ? 'waiting for Blender' : 'enable pointer control in Blender'}{/if}
+        {#if !pointerReady} · {scene.pending || sceneSyncing ? 'waiting for Blender' : 'enable pointer control in Blender'}{/if}
       </span>
     </div>
     <div class="pointer-overlay-settings">
@@ -178,7 +179,7 @@
           <label for="pointer-object-select">Object to animate</label>
           <select id="pointer-object-select" value={scene.selectedId}
             onchange={event => sceneSession.choose(event.currentTarget.value)}
-            disabled={Boolean(scene.pending) || sceneLocked || !scene.catalog.capabilities?.includes('pointer_follow')}>
+            disabled={Boolean(scene.pending) || sceneSyncing || sceneLocked || !scene.catalog.capabilities?.includes('pointer_follow')}>
             <option value="">Choose a scene object</option>
             {#each scene.catalog.objects as object (object.id)}
               <option value={object.id} disabled={!object.can_follow}
@@ -188,7 +189,7 @@
             {/each}
           </select>
           <button type="button" onclick={() => sceneSession.attach()}
-            disabled={!scene.selectedId || !selectedObject?.can_follow || Boolean(scene.pending) || sceneLocked ||
+            disabled={!scene.selectedId || !selectedObject?.can_follow || Boolean(scene.pending) || sceneSyncing || sceneLocked ||
               !scene.catalog.capabilities?.includes('pointer_follow')}>Attach &amp; enable</button>
         </div>
         <p class="pointer-scene-summary">
@@ -204,13 +205,13 @@
             <label for="pointer-plane-width">Plane width <small>Blender units</small></label>
             <input id="pointer-plane-width" type="text" inputmode="decimal" value={scene.draftWidth}
               oninput={event => sceneSession.setDraft('width', event.currentTarget.value)}
-              disabled={Boolean(scene.pending) || sceneLocked}>
+              disabled={Boolean(scene.pending) || sceneSyncing || sceneLocked}>
             <label for="pointer-plane-height">Plane height <small>Blender units</small></label>
             <input id="pointer-plane-height" type="text" inputmode="decimal" value={scene.draftHeight}
               oninput={event => sceneSession.setDraft('height', event.currentTarget.value)}
-              disabled={Boolean(scene.pending) || sceneLocked}>
+              disabled={Boolean(scene.pending) || sceneSyncing || sceneLocked}>
             <button type="button" onclick={() => sceneSession.applySize()}
-              disabled={!scene.dirty || scene.conflict || Boolean(scene.pending) || sceneLocked}>Apply size</button>
+              disabled={!scene.dirty || scene.conflict || Boolean(scene.pending) || sceneSyncing || sceneLocked}>Apply size</button>
           </div>
           {#if scene.conflict}
             <p role="alert">Blender changed the plane while you were editing. Review its new values before applying.</p>

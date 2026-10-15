@@ -62,3 +62,16 @@ The browser selector is a TODO, not yet a visible dropdown. Its full message sch
 Send `{"type":"pointer_plane_set","request_id":"resize-1","scene_id":"<scene_objects.scene.id>","revision":1,"width":8,"height":6}` using the latest advertised revision. Both dimensions are required, finite numbers from 0.001 to 1,000,000 in Blender world units. Blender replies with `pointer_plane_set_result` (`request_id`, `ok`, and either dimensions/revision or an error message), then advertises updated `scene_objects.pointer.width/height`. Refresh on stale revisions. Changes are rejected while recording or rendering. This uses the existing browser scene-command event bridge.
 
 Select the configured origin, target Empty, or followed object to see the plane outline and center guides in the 3D viewport. Enable viewport Overlays. Bounds follow the origin position, optional local rotation, dimensions, and active browser planes (otherwise the configured Blender plane). The overlay does not appear in renders.
+
+
+### Run browser-controller integration against Blender
+
+From the repository root (Node.js 22+ and Blender required):
+
+```powershell
+python blender-addon/run_browser_tests.py --blender "C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe" --rig "C:\path\to\ball_rig.blend"
+```
+
+`--rig` is optional; omit it to generate a simple Ball -> Ball_Deform -> Ball_Control hierarchy. The runner opens only disposable Blender processes and never saves the supplied rig. It checks the actual browser controller, message validation and pointer builder over real sockets, including recording, stale revisions, remote edits and reconnects. It then launches a separate hidden graphical Blender process for an actual CPU render and verifies both browser and server render locks. Generated reports, the small linked-object fixture and transfer image stay in ignored `.browser-e2e/`; the runner stops the processes it starts even when tests fail. Use a graphical desktop for the render-lock phase.
+
+For manual browser UI checks, launch `test_browser_fixture_blender.py` separately with `--port 18781` and connect the development client using `?ws=ws%3A%2F%2F127.0.0.1%3A18781`. That fixture defaults to a 20-minute lifetime; sending its local test command `{"id":"finish","action":"stop"}` to `.browser-e2e/command.json` stops it early. This local file command channel exists only in the test fixture, not in the add-on's WebSocket protocol. Start a fresh fixture before each full controller suite, which intentionally renames/deletes test objects and switches scenes.

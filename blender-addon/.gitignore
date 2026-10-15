@@ -5,3 +5,4 @@ __pycache__/
 *_stdout.log
 *_stderr.log
 plane_view_verification.log
+.browser-e2e/

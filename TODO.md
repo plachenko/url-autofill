@@ -34,9 +34,9 @@ Validated with `test_pointers.py` (protocol and actual sockets) and `test_pointe
 
 ### Browser X/Y/Z plane follow-up
 
-- [ ] With the built add-on installed, connect the browser and select X, Y, then Z in the Pointers overlay. Confirm the target Empty moves on YZ, XZ, then XY, using the configured plane width and height.
-- [ ] Switch planes during an active multi-touch gesture and during a recording. Confirm the old plane's contacts reset, the next contacts use the newly selected plane, and the recorded keyframes contain no stale movement from the previous plane.
-- [ ] Repeat with **Use browser plane** disabled and confirm the Blender plane selection remains in control for all three browser buttons.
+- [x] With the built add-on installed, connect the browser and select X, Y, then Z in the Pointers overlay. Confirm the target Empty moves on YZ, XZ, then XY, using the configured plane width and height.
+- [x] Switch planes during an active multi-touch gesture and during a recording. Confirm the old plane's contacts reset, the next contacts use the newly selected plane, and the recorded keyframes contain no stale movement from the previous plane.
+- [x] Repeat with **Use browser plane** disabled and confirm the Blender plane selection remains in control for all three browser buttons.
 
 ## Record pointer movement as animation
 
@@ -68,7 +68,7 @@ The selected **scene object follows the control Empty**. It does not become the 
 - [x] Reflect `pointer.followed_object_id`, `target_id`, `origin_id`, `enabled`, `recording`, `rendering`, and `use_browser_plane` from the advertised state. Keep the header plane buttons consistent: x -> YZ, y -> XZ, z -> XY. When Use browser plane is false, Blender's `pointer.plane` wins.
 - [x] Replace options when the scene/revision changes, retain selection by ID through renames, remove deleted options, and display failures. On stale-list failure, request the list again and let the user reselect rather than silently resending an old attachment. Show `total`/`truncated` when only the first 4096 objects are advertised.
 - [x] Keep the existing rendered-file preview intact when receiving metadata. Object advertisements contain names/control metadata, not mesh geometry; rendered images/movies still arrive through the existing file protocol.
-- [ ] Validate end to end: select Ball from the saved rig without breaking Ball -> Ball_Deform -> Ball_Control, select an ordinary mesh without a rig, confirm the pose is unchanged at attachment and pointer movement moves the visible object, then test reconnect, rename/deletion, scene switch, recording lock and read-only entries.
+- [x] Validate end to end: select Ball from the saved rig without breaking Ball -> Ball_Deform -> Ball_Control, select an ordinary mesh without a rig, confirm the pose is unchanged at attachment and pointer movement moves the visible object, then test reconnect, rename/deletion, scene switch, recording lock and read-only entries.
 
 ### Wire examples
 
@@ -109,7 +109,7 @@ The Blender backend is implemented in add-on 1.10.0. The browser Pointers overla
 - [x] Read confirmed dimensions and the latest revision from every catalog, including edits made in Blender or by another client. Do not overwrite an unsent draft silently; identify a conflicting remote update and let the user reload/reapply explicitly. A resize can invalidate the revision held by the object selector, and an attachment can invalidate a pending size draft's revision.
 - [x] Treat the matching successful result as acknowledgement; reconcile with the catalog regardless of which arrives first. On failure preserve confirmed values and show `message`. On a stale revision fetch `scene_objects_request` and require a fresh Apply. Never send a stored command automatically after reconnect or scene change.
 - [x] Explain viewport visibility near the controls/help: select the configured origin, target Empty, or followed object in Blender and enable viewport Overlays to see the plane bounds. Browser sizing does not select Blender objects. With Use browser plane enabled, active browser planes determine the outline; otherwise Blender's configured plane wins.
-- [ ] Test browser-to-Blender resizing for X/Y/Z, local origin rotation, edits from Blender/another client, pending attachment versus Apply, invalid input, recording/rendering locks, stale revisions, disconnect/reconnect, scene switch, and timeout. Verify width/height acknowledgements and catalogs never replace the rendered-file preview, active gestures reset safely, and viewport bounds match the resulting movement range.
+- [x] Test browser-to-Blender resizing for X/Y/Z, local origin rotation, edits from Blender/another client, pending attachment versus Apply, invalid input, recording/rendering locks, stale revisions, disconnect/reconnect, scene switch, and timeout. Verify width/height acknowledgements and catalogs never replace the rendered-file preview, active gestures reset safely, and viewport bounds match the resulting movement range.
 
 Resize request (use the **latest** advertised scene ID/revision):
 
@@ -129,4 +129,17 @@ Failure response (scene ID/revision may also be present):
 {"type":"pointer_plane_set_result","request_id":"size-unique-id","ok":false,"message":"Plane settings changed; refresh scene_objects and try again"}
 ```
 
-The browser controls use `src/lib/pointer-scene-session.js` for discovery, revision and request tracking, remote edit conflicts, and command timeouts. Browser protocol and controller tests: `test/websocket-scene-objects.test.js` and `test/pointer-scene-session.test.js`. Backend tests: `blender-addon/test_scene_objects.py`, `blender-addon/test_plane_blender.py`, and `blender-addon/test_plane_view_blender.py`. The unchecked end-to-end items require a browser connected to Blender; Blender is not installed in this development environment.
+The browser controls use `src/lib/pointer-scene-session.js` for discovery, revision and request tracking, remote edit conflicts, and command timeouts. Browser protocol and controller tests: `test/websocket-scene-objects.test.js` and `test/pointer-scene-session.test.js`. Backend tests: `blender-addon/test_scene_objects.py`, `blender-addon/test_plane_blender.py`, and `blender-addon/test_plane_view_blender.py`. The end-to-end items above were validated on a machine with Blender 5.2.2 and a live browser client; see the validation notes below.
+
+
+## Browser/Blender integration validation (2026-10-15)
+
+- [x] Pull the browser object selector and plane size controls, and validate them against the saved Ball rig in a disposable Blender process. The tested runtime matches the installed add-on's Python files.
+- [x] Verify the actual browser UI discovers scene objects, disables a real linked/read-only object, attaches Ball, applies width/height, maps X/Y/Z, rejects empty size inputs, disables configuration during recording, and preserves a received PNG preview while metadata arrives.
+- [x] Add a repeatable live integration suite using the same browser session controller and pointer message builder against real Blender sockets. It checks Ball hierarchy/world pose, ordinary mesh pose/movement, two-contact plane switches and final recorded key values, fixed Blender plane overrides, rotated bounds, remote edits/conflicts, invalid input, another socket client, stale revisions, rename/deletion, reconnect, scene switch, and timeout recovery without replaying commands.
+- [x] Validate rendering locks during a real asynchronous CPU render: the browser controller disables follow/resize and Blender rejects a resize submitted during the render job.
+- [x] Fix the acknowledgement/catalog race: after a successful reply with a newer revision, disable commands and pointer capture until its catalog arrives. Ignore replies whose message type does not match the pending operation, even if the request ID matches. Add a regression test.
+
+Run `python blender-addon/run_browser_tests.py --blender "<Blender executable>" --rig "<optional ball_rig.blend>"` from the repository root. Omit `--rig` to generate a simple test hierarchy. Requires Node.js 22+ and Blender on this machine. It launches separate disposable processes, never saves the supplied rig, exits its own processes, and stores observations under ignored `blender-addon/.browser-e2e/`. The render-lock check needs a graphical Blender session; the main controller suite runs Blender in background mode.
+
+Coverage combines actual browser UI smoke checks with automated controller/socket/Blender assertions. Multi-contact streams and timed plane transitions are generated by the browser's message builder; physical touch hardware is not simulated. The viewport GPU overlay has a separate draw test (`test_plane_view_blender.py`), while the live suite checks its corner geometry against the actual movement range. Browser unit tests also cover recording/rendering flags, wrong-scene replies, scene revisions, and draft conflicts.

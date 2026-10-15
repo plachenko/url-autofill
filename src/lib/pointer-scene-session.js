@@ -119,6 +119,8 @@ export function createPointerSceneSession({ sendCommand, resetGesture, onChange,
     if (!['pointer_follow_result', 'pointer_plane_set_result'].includes(message.type) ||
         !state.pending || message.request_id !== state.pending.requestId) return;
     const pending = state.pending;
+    const expectedType = pending.kind === 'follow' ? 'pointer_follow_result' : 'pointer_plane_set_result';
+    if (message.type !== expectedType) return;
     if (message.scene_id && message.scene_id !== pending.sceneId) return;
     clearPending();
     if (!message.ok) {
@@ -195,7 +197,8 @@ export function createPointerSceneSession({ sendCommand, resetGesture, onChange,
   function canEdit(capability) {
     const pointer = state.catalog?.pointer || {};
     return state.connected && state.catalog?.capabilities?.includes(capability) &&
-      !state.pending && !pointer.recording && !pointer.rendering;
+      !state.pending && state.catalog.revision >= state.acceptedRevision &&
+      !pointer.recording && !pointer.rendering;
   }
 
   function attach() {

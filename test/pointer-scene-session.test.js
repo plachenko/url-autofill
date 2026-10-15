@@ -145,3 +145,17 @@ test('stale failures, scene switches, timeout and reconnect never replay an old 
   assert.equal(h.commands.length, before + 1, 'only discovery is sent on reconnect');
   assert.equal(h.commands.at(-1).type, 'scene_objects_request');
 });
+
+test('acknowledged revisions block new commands until the matching catalog arrives', () => {
+  const h = harness(); h.session.connect(); h.session.receive(catalog());
+  h.session.choose('ball'); assert.equal(h.session.attach(), true);
+  h.session.receive({ type: 'pointer_plane_set_result', request_id: 'pick-1', ok: true, revision: 3 });
+  assert.equal(h.session.snapshot().pending.kind, 'follow', 'wrong reply type cannot release a command');
+  h.session.receive({ type: 'pointer_follow_result', request_id: 'pick-1', ok: true, object_id: 'ball', revision: 3 });
+  h.session.setDraft('width', '8');
+  assert.equal(h.session.applySize(), false, 'never resize with the pre-attachment revision');
+  assert.equal(h.session.attach(), false);
+  h.session.receive(catalog(3));
+  assert.equal(h.session.applySize(), true);
+  assert.equal(h.commands.at(-1).revision, 3);
+});
