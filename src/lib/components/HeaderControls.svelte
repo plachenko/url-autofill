@@ -68,7 +68,7 @@
 </script>
 
 <div class="app-header">
-  <div class="flex-1 p-2">
+  <div class="header-menu p-2">
     <button
       id="menu-toggle"
       type="button"
@@ -102,7 +102,7 @@
     <button id="header-pointers-toggle" type="button" aria-controls="pointer-overlay"
       aria-expanded={pointersOpen} aria-pressed={pointersOpen} onclick={togglePointers}>Pointers</button>
   {/if}
-  <div class="p-2">
+  <div class="header-actions p-2">
     <button
       id="page-fullscreen"
       type="button"
