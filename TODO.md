@@ -11,7 +11,7 @@ The Blender add-on currently sends the latest `render_progress` status to a new 
 
 ## Handle pointer positions in the Blender add-on
 
-The Clips → Import touch surface sends JSON over its existing WebSocket connection. The add-on needs a handler for `pointer_positions` messages. Each message contains `phase` (`down`, `move`, `up`, `cancel`, `hover`, or `reset`), `changed` (the pointer that caused the event, or null for `reset`), and `pointers` (all contacts still down after the event). Example:
+The Clips → Pointers touch surface appears while connected and sends JSON over the existing WebSocket connection. The add-on needs a handler for `pointer_positions` messages. Each message contains `phase` (`down`, `move`, `up`, `cancel`, `hover`, or `reset`), `changed` (the pointer that caused the event, or null for `reset`), and `pointers` (all contacts still down after the event). Example:
 
 ```json
 {"type":"pointer_positions","phase":"move","changed":{"id":9,"x":0.8,"y":0.7,"kind":"touch","pressure":0.5},"pointers":[{"id":5,"x":0.2,"y":0.3,"kind":"touch","pressure":0.5},{"id":9,"x":0.8,"y":0.7,"kind":"touch","pressure":0.5}]}

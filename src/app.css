@@ -356,7 +356,7 @@
   #compositor .clip-panel-tabs button { flex: 1 1 0; min-width: 0; min-height: 32px;
     padding: 3px 6px; font-size: 12px; }
   .clip-panel-tabs button[aria-selected="true"] { background: #396eaf; border-color: #70d8ff; }
-  #timeline-saved-content[hidden], #timeline-import-content[hidden] { display: none; }
+  #timeline-saved-content[hidden], #timeline-import-content[hidden], #timeline-pointers-content[hidden] { display: none; }
   #timeline-clips-list { display: grid; gap: 7px; }
   #compositor .timeline-clip-card { display: grid; gap: 3px; width: 100%; min-height: 0;
     padding: 4px; border: 1px solid #7085a1; border-radius: 5px;
@@ -450,6 +450,7 @@
   .websocket-save-clip { padding-top: 10px; border-top: 1px solid #7085a1; }
   .websocket-pointer-control { margin: 12px 0; padding: 8px; border: 1px solid #7085a1;
     border-radius: 8px; background: #101b2a; }
+  #timeline-pointers-content .websocket-pointer-control { margin: 0; }
   .websocket-pointer-control strong { display: block; }
   .websocket-pointer-surface { position: relative; height: 160px; overflow: hidden;
     border: 2px solid #70d8ff; border-radius: 8px; touch-action: none; user-select: none;

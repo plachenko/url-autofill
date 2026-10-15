@@ -9,6 +9,10 @@
   import { pointerPosition, pointerPositionsMessage } from '../websocket-pointers.js';
   import { favoriteServerUrl, loadWebsocketFavorites, saveWebsocketFavorites, websocketServerUrl } from '../websocket-favorites.js';
 
+  export let importOpen = false;
+  export let pointersOpen = false;
+  export let onConnectionChange = () => {};
+
   let serverUrl = '';
   let outgoingText = '';
   let returnText = '';
@@ -41,6 +45,7 @@
   let pointerFrame = 0;
   let pendingPointerMove = null;
   let pointerError = '';
+  let wasPointersOpen = false;
   let renderProgress = null;
   let renderTiming = null;
   let renderClock = Date.now();
@@ -50,6 +55,15 @@
     fileProgress?.state === 'Complete' ? 100 : 0;
   $: normalizedServer = favoriteServerUrl(serverUrl);
   $: isFavorite = favorites.includes(normalizedServer);
+  $: if (pointersOpen !== wasPointersOpen) {
+    if (wasPointersOpen) resetPointers(true);
+    wasPointersOpen = pointersOpen;
+  }
+
+  function setConnected(value) {
+    connected = value;
+    onConnectionChange(value);
+  }
 
   onMount(() => {
     const renderClockTimer = window.setInterval(() => { renderClock = Date.now(); }, 1000);
@@ -81,7 +95,7 @@
     fileReceiver = null;
     interruptRender();
     socket = null;
-    connected = false;
+    setConnected(false);
     connecting = false;
     status = 'Disconnected.';
     current?.close();
@@ -127,7 +141,7 @@
     current.onopen = () => {
       if (socket !== current) return;
       connecting = false;
-      connected = true;
+      setConnected(true);
       status = 'Connected.';
       if (!receivedFile) void loadLatestWebSocketFile(endpoint).then(file => {
         if (file && socket === current && fileGeneration === restoreGeneration && !receivedFile && !fileProgress)
@@ -168,7 +182,7 @@
       interruptRender();
       fileReceiver = null;
       socket = null;
-      connected = false;
+      setConnected(false);
       connecting = false;
       if (status !== 'WebSocket error. Check the server URL and browser console.') status = 'Disconnected.';
     };
@@ -418,6 +432,7 @@
   }
 </script>
 
+<div id="timeline-import-content" role="tabpanel" aria-labelledby="timeline-import-tab" hidden={!importOpen}>
 <section id="websocket-panel" aria-label="WebSocket" tabindex="-1">
   <h2>WebSocket</h2>
   <label for="websocket-url">Server URL</label>
@@ -437,22 +452,6 @@
     <button type="button" onclick={disconnect} disabled={!socket}>Disconnect</button>
   </div>
   <p role="status" aria-live="polite">{status}</p>
-  <div class="websocket-pointer-control">
-    <strong>Blender pointers</strong>
-    <p>Touch with multiple fingers, drag a mouse, or use a pen. Positions are relative to this pad. Blender add-on support is required to use them.</p>
-    <div class="websocket-pointer-surface" class:is-disconnected={!connected}
-      role="group" aria-label="Blender pointer surface" bind:this={pointerSurface}
-      onpointerdown={pointerDown} onpointermove={pointerMove}
-      onpointerup={event => pointerEnd(event, 'up')}
-      onpointercancel={event => pointerEnd(event, 'cancel')}
-      onlostpointercapture={pointerLostCapture}>
-      {#each pointerMarkers as pointer (pointer.id)}
-        <span class="websocket-pointer-marker" style={`left:${pointer.x * 100}%;top:${pointer.y * 100}%`}>{pointer.id}</span>
-      {/each}
-    </div>
-    <p role="status">{connected ? `${pointerMarkers.length} active pointer${pointerMarkers.length === 1 ? '' : 's'}` : 'Connect to send pointer positions.'}</p>
-    {#if pointerError}<p class="websocket-image-error" role="alert">{pointerError}</p>{/if}
-  </div>
   {#if renderProgress}
     <div class="websocket-file-transfer">
       <label for="websocket-render-progress">Blender render · {renderProgress.scene}</label>
@@ -524,3 +523,22 @@
     </form>
   {/if}
 </section>
+</div>
+<div id="timeline-pointers-content" role="tabpanel" aria-labelledby="timeline-pointers-tab" hidden={!pointersOpen}>
+  <div class="websocket-pointer-control">
+    <strong>Blender pointers</strong>
+    <p>Touch with multiple fingers, drag a mouse, or use a pen. Positions are relative to this pad. Blender add-on support is required to use them.</p>
+    <div class="websocket-pointer-surface" class:is-disconnected={!connected}
+      role="group" aria-label="Blender pointer surface" bind:this={pointerSurface}
+      onpointerdown={pointerDown} onpointermove={pointerMove}
+      onpointerup={event => pointerEnd(event, 'up')}
+      onpointercancel={event => pointerEnd(event, 'cancel')}
+      onlostpointercapture={pointerLostCapture}>
+      {#each pointerMarkers as pointer (pointer.id)}
+        <span class="websocket-pointer-marker" style={`left:${pointer.x * 100}%;top:${pointer.y * 100}%`}>{pointer.id}</span>
+      {/each}
+    </div>
+    <p role="status">{connected ? `${pointerMarkers.length} active pointer${pointerMarkers.length === 1 ? '' : 's'}` : 'Connect to send pointer positions.'}</p>
+    {#if pointerError}<p class="websocket-image-error" role="alert">{pointerError}</p>{/if}
+  </div>
+</div>

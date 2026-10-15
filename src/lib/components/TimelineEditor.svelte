@@ -3,11 +3,18 @@
   import WebSocketPanel from "./WebSocketPanel.svelte";
   let clipsOpen = false;
   let clipSection = 'saved';
+  let pointerAvailable = false;
+  function connectionChanged(value) {
+    pointerAvailable = value;
+    if (!value && clipSection === 'pointers') clipSection = 'import';
+  }
   function switchClipSection(event) {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    clipSection = clipSection === 'saved' ? 'import' : 'saved';
-    document.getElementById(clipSection === 'saved' ? 'timeline-saved-tab' : 'timeline-import-tab')?.focus();
+    const sections = pointerAvailable ? ['saved', 'import', 'pointers'] : ['saved', 'import'];
+    const offset = event.key === 'ArrowRight' ? 1 : sections.length - 1;
+    clipSection = sections[(sections.indexOf(clipSection) + offset) % sections.length];
+    document.getElementById(`timeline-${clipSection}-tab`)?.focus();
   }
 </script>
 
@@ -41,20 +48,22 @@
       <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"
         aria-expanded={clipsOpen} aria-pressed={clipsOpen} onclick={() => clipsOpen = !clipsOpen}>Clips</button>
     </div>
-    <aside id="timeline-clips-panel" class:is-importing={clipSection === 'import'} aria-label="Clips" hidden={!clipsOpen}>
+    <aside id="timeline-clips-panel" class:is-importing={clipSection !== 'saved'} aria-label="Clips" hidden={!clipsOpen}>
       <div class="clip-panel-tabs" role="tablist" aria-label="Clip panel" tabindex="-1" onkeydown={switchClipSection}>
         <button id="timeline-saved-tab" type="button" role="tab" aria-controls="timeline-saved-content"
           aria-selected={clipSection === 'saved'} onclick={() => clipSection = 'saved'}>Saved</button>
         <button id="timeline-import-tab" type="button" role="tab" aria-controls="timeline-import-content"
           aria-selected={clipSection === 'import'} onclick={() => { clipsOpen = true; clipSection = 'import'; }}>Import</button>
+        {#if pointerAvailable}
+          <button id="timeline-pointers-tab" type="button" role="tab" aria-controls="timeline-pointers-content"
+            aria-selected={clipSection === 'pointers'} onclick={() => clipSection = 'pointers'}>Pointers</button>
+        {/if}
       </div>
       <div id="timeline-saved-content" role="tabpanel" aria-labelledby="timeline-saved-tab" hidden={clipSection !== 'saved'}>
         <div id="timeline-clips-list"></div>
         <p id="timeline-clips-status" role="status" aria-live="polite"></p>
       </div>
-      <div id="timeline-import-content" role="tabpanel" aria-labelledby="timeline-import-tab" hidden={clipSection !== 'import'}>
-        <WebSocketPanel />
-      </div>
+      <WebSocketPanel importOpen={clipsOpen && clipSection === 'import'} pointersOpen={clipsOpen && clipSection === 'pointers'} onConnectionChange={connectionChanged} />
     </aside>
     <div id="track-list" aria-label="Composition tracks">
       <div id="track-content"></div>
