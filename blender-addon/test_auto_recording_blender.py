@@ -40,7 +40,12 @@ def point(identity, x, y):
 async def send(ws, phase, changed=None, points=()):
     await ws.send(json.dumps(dict(type='pointer_positions', phase=phase, changed=changed, pointers=list(points))))
     await ws.send('pointer timer barrier')
-    assert await asyncio.wait_for(ws.recv(), 3) == 'pointer timer barrier'
+    while True:
+        wire = await asyncio.wait_for(ws.recv(), 3)
+        if wire == 'pointer timer barrier':
+            break
+        if not wire.startswith('Replay unavailable'):
+            assert json.loads(wire)['type'] in ('scene_objects', 'scene_objects_pending')
 
 
 async def gestures():

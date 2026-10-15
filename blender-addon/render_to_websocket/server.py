@@ -6,6 +6,7 @@ import uuid
 from .replay import ReplayCache
 from .transfer import transfer
 from .pointers import PointerInbox
+from .scene_requests import SceneRequestInbox
 
 
 class RenderServer:
@@ -17,6 +18,9 @@ class RenderServer:
         self.cache_bytes, self.ack_timeout = cache_bytes, ack_timeout
         self.cache = ReplayCache(cache_bytes)
         self.pointers = PointerInbox()
+        self.object_requests = SceneRequestInbox()
+        self.scene_objects = None
+        self._scene_clients = {}
         self.loop = self.thread = self.server = self.stop_evt = None
         self.host = self.port = None
         self.status = 'stopped'
@@ -102,6 +106,9 @@ class RenderServer:
                 await ws.send(json.dumps(self.render_status))
             self._client_locks[ws] = asyncio.Lock()
             self.clients.add(ws)
+            self._scene_clients[pointer_client] = ws
+            if self.scene_objects:
+                await ws.send(self.scene_objects)
             # Run replay separately: this handler must keep reading file_ack.
             # Enter now so a newer completion cannot remove this snapshot before
             # the task gets its first turn on the event loop.
@@ -131,6 +138,13 @@ class RenderServer:
                         self.pointers.submit(pointer_client, response)
                     except ValueError as exc:
                         await ws.send(json.dumps(dict(type='pointer_error', message=str(exc))))
+                elif isinstance(response, dict) and response.get('type') == 'scene_objects_request':
+                    await ws.send(self.scene_objects or json.dumps(dict(type='scene_objects_pending', version=1)))
+                elif isinstance(response, dict) and response.get('type') in {'pointer_follow', 'pointer_plane_set'}:
+                    try:
+                        self.object_requests.submit(pointer_client, response)
+                    except ValueError as exc:
+                        await ws.send(json.dumps(dict(type=response['type'] + '_result', request_id=response.get('request_id'), ok=False, message=str(exc))))
                 elif isinstance(response, dict) and response.get('type') == 'file_ack':
                     identity = response.get('id')
                     if not isinstance(identity, str) or not isinstance(response.get('ok'), bool):
@@ -145,6 +159,8 @@ class RenderServer:
         finally:
             self.clients.discard(ws)
             self.pointers.disconnect(pointer_client)
+            self.object_requests.disconnect(pointer_client)
+            self._scene_clients.pop(pointer_client, None)
             # Signal pending live transfers immediately, rather than waiting 60s.
             for (client, _), pending in list(self.acks.items()):
                 if client is ws and not pending.done():
@@ -189,6 +205,33 @@ class RenderServer:
             return await self._task(self._publish_file(path, mime))
         return asyncio.run_coroutine_threadsafe(publish(), self.loop)
 
+    def publish_scene_objects(self, message):
+        wire = json.dumps(message, separators=(',', ':'), ensure_ascii=True)
+        if wire == self.scene_objects:
+            return
+        self.scene_objects = wire
+        if not self.running or self.loop is None:
+            return
+        async def publish():
+            await asyncio.gather(*(ws.send(wire) for ws in list(self.clients)), return_exceptions=True)
+        asyncio.run_coroutine_threadsafe(publish(), self.loop)
+
+    def reply_scene_object(self, client, message):
+        if not self.running or self.loop is None:
+            return
+        async def reply():
+            ws = self._scene_clients.get(client)
+            if ws:
+                try:
+                    await ws.send(json.dumps(message, separators=(',', ':'), ensure_ascii=True))
+                except Exception:
+                    pass
+        asyncio.run_coroutine_threadsafe(reply(), self.loop)
+
+    def clear_scene_objects(self):
+        self.scene_objects = None
+        self.object_requests.clear()
+
     def publish_render(self, message):
         self.render_status = message
         if not self.running or self.loop is None:
@@ -230,6 +273,8 @@ class RenderServer:
                 self.server = None
                 self.clients.clear()
                 self.pointers.clear()
+                self.clear_scene_objects()
+                self._scene_clients.clear()
                 self.acks.clear()
                 self._client_locks.clear()
                 self._client_versions.clear()
@@ -267,5 +312,7 @@ class RenderServer:
             self.thread = None
             self.render_status = None
             self.pointers.clear()
+            self.clear_scene_objects()
+            self._scene_clients.clear()
             self.cache.close()
             self.status = 'stopped'

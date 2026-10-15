@@ -6,6 +6,7 @@
   import { loadLatestWebSocketFile, saveLatestWebSocketFile } from '../received-media.js';
   import { mediaStorageKey, storeReceivedMedia, storeWholeMedia, validMediaId, validMime } from '../media-store.js';
   import { renderProgressMessage, renderTimeLeft, updateRenderTimeEstimate } from '../websocket-render.js';
+  import { sceneObjectMessage, validSceneCommand, websocketSceneMessageEvent, websocketSceneCommandEvent } from '../websocket-scene-objects.js';
   import { websocketPointerMessageEvent } from '../websocket-pointers.js';
   import { favoriteServerUrl, loadWebsocketFavorites, saveWebsocketFavorites, websocketServerUrl,
     websocketFavoritesChangedEvent, websocketConnectRequestEvent, websocketConnectionEvent,
@@ -72,6 +73,15 @@
     }
   }
 
+  function sendSceneCommand(event) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !validSceneCommand(event.detail)) return;
+    try { socket.send(JSON.stringify(event.detail)); }
+    catch {
+      status = 'Could not send scene object command.';
+      publishConnection();
+    }
+  }
+
   onMount(() => {
     const renderClockTimer = window.setInterval(() => { renderClock = Date.now(); }, 1000);
     favorites = loadWebsocketFavorites(window.localStorage);
@@ -81,12 +91,14 @@
     window.addEventListener(websocketConnectRequestEvent, connectFromHeader);
     window.addEventListener(websocketConnectionRequestEvent, publishConnection);
     window.addEventListener(websocketPointerMessageEvent, sendPointerMessage);
+    window.addEventListener(websocketSceneCommandEvent, sendSceneCommand);
     publishConnection();
     if (serverUrl.trim()) connect();
     return () => {
       window.removeEventListener(websocketConnectRequestEvent, connectFromHeader);
       window.removeEventListener(websocketConnectionRequestEvent, publishConnection);
       window.removeEventListener(websocketPointerMessageEvent, sendPointerMessage);
+      window.removeEventListener(websocketSceneCommandEvent, sendSceneCommand);
       window.clearInterval(renderClockTimer);
       endImageDrag();
       fileReceiver?.dispose();
@@ -108,6 +120,7 @@
     interruptRender();
     socket = null;
     setConnected(false);
+    window.dispatchEvent(new CustomEvent(websocketSceneMessageEvent, { detail: null }));
     connecting = false;
     status = 'Disconnected.';
     publishConnection();
@@ -171,6 +184,11 @@
         const value = event.data instanceof Blob ? await event.data.text() :
           event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data) : String(event.data);
         if (socket !== current) return;
+        const sceneMessage = sceneObjectMessage(value);
+        if (sceneMessage) {
+          window.dispatchEvent(new CustomEvent(websocketSceneMessageEvent, { detail: sceneMessage }));
+          return;
+        }
         const rendering = renderProgressMessage(value);
         if (rendering) {
           renderClock = Date.now();
@@ -201,6 +219,7 @@
       fileReceiver = null;
       socket = null;
       setConnected(false);
+      window.dispatchEvent(new CustomEvent(websocketSceneMessageEvent, { detail: null }));
       connecting = false;
       if (status !== 'WebSocket error. Check the server URL and browser console.') status = 'Disconnected.';
       publishConnection();

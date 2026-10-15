@@ -1,10 +1,10 @@
-# Render to WebSocket — Blender add-on 1.9.0
+# Render to WebSocket — Blender add-on 1.10.0
 
 Transfers completed Blender outputs in verified base64 chunks, replays the latest file after reconnect, and accepts pointer positions from URL Autofill to drive and record Empties.
 
 ## Install
 
-Run `python blender-addon/build.py` from the repository root. Install the resulting `blender-addon/render_to_websocket-1.9.0.zip` through Blender Preferences > Add-ons > Install from Disk. Restart Blender after replacing an already loaded version. Blender 4.2+ is targeted; integration tests use Blender 5.2.2.
+Run `python blender-addon/build.py` from the repository root. Install the resulting `blender-addon/render_to_websocket-1.10.0.zip` through Blender Preferences > Add-ons > Install from Disk. Restart Blender after replacing an already loaded version. Blender 4.2+ is targeted; integration tests use Blender 5.2.2.
 
 The vendored pure-Python websockets runtime needs no pip installation. Its BSD license is included in `render_to_websocket/vendor/websockets-17.2.dist-info/licenses/LICENSE`. Original add-on author: Denis Perchenko.
 
@@ -47,3 +47,18 @@ blender --background --factory-startup --python-exit-code 1 --python test_record
 ```
 
 `test_recording_blender.py` verifies fractional fps, multi-touch takes, held poses, preserved actions, linear keys, frame range, save/reload and two actual rendered frames with the add-on disabled. `test_auto_recording_blender.py` is an optional isolated **interactive** timer integration test: run with `blender --factory-startup --python-exit-code 1 --python test_auto_recording_blender.py`. It writes a verification JSON and closes its own test instance when done. Use factory-startup, never an existing working scene.
+
+
+## Scene-object discovery (1.10.0)
+
+Blender advertises the active scene's object list as `scene_objects` version 1, including session object IDs, names/types, parent IDs, editability, and the current pointer target/origin/followed object. Lists refresh after changes and on reconnect; `scene_objects_request` returns the current snapshot. Main-thread snapshots are bounded to 4096 objects and broadcast only when changed.
+
+A browser can send `pointer_follow` with a unique request ID and the displayed scene ID/revision/object ID. The selected visible object follows the Empty: an existing compatible rig is preserved, otherwise an Empty is created at the object's bottom-center and the object is parented to it without changing its current world pose. Existing Empties may be used directly. An independent origin helper is created when needed. The optional boolean `enable` controls whether to enable pointer movement; omission preserves the current state. Stale selections, read-only objects, rendering and recording are rejected. Follow roots are not reused as extra-pointer controls or deleted by extra-pointer cleanup.
+
+The browser selector is a TODO, not yet a visible dropdown. Its full message schema, existing-connection event bridge, and UI checklist are documented in the repository `TODO.md`. Run `python -m unittest -v test_scene_objects.py` and `blender --background --factory-startup --python-exit-code 1 --python test_scene_objects_blender.py` to validate discovery, socket requests, pose preservation and real object movement.
+
+### WebSocket plane dimensions and viewport bounds
+
+Send `{"type":"pointer_plane_set","request_id":"resize-1","scene_id":"<scene_objects.scene.id>","revision":1,"width":8,"height":6}` using the latest advertised revision. Both dimensions are required, finite numbers from 0.001 to 1,000,000 in Blender world units. Blender replies with `pointer_plane_set_result` (`request_id`, `ok`, and either dimensions/revision or an error message), then advertises updated `scene_objects.pointer.width/height`. Refresh on stale revisions. Changes are rejected while recording or rendering. This uses the existing browser scene-command event bridge.
+
+Select the configured origin, target Empty, or followed object to see the plane outline and center guides in the 3D viewport. Enable viewport Overlays. Bounds follow the origin position, optional local rotation, dimensions, and active browser planes (otherwise the configured Blender plane). The overlay does not appear in renders.

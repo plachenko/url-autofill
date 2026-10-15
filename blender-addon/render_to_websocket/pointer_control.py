@@ -20,6 +20,8 @@ class RTWS_PointerSettings(bpy.types.PropertyGroup):
     enabled: bpy.props.BoolProperty(name='Enable pointer control', default=False)
     origin: bpy.props.PointerProperty(name='Origin object', type=bpy.types.Object,
         description='Pad center is the evaluated world position of this scene object')
+    followed: bpy.props.PointerProperty(name='Followed object', type=bpy.types.Object,
+        description='Object selected through the browser to follow the pointer control Empty')
     target: bpy.props.PointerProperty(name='Target Empty', type=bpy.types.Object, poll=empty_only,
         description='The first active contact controls this Empty; other contacts use separate generated Empties')
     plane: bpy.props.EnumProperty(name='Movement plane', default='XY', items=[
@@ -82,7 +84,7 @@ class PointerController:
         if valid_object(settings.target, scene) and settings.target.type == 'EMPTY' and settings.target.as_pointer() not in used:
             obj = settings.target
         else:
-            pool = [obj for obj in scene.objects if obj.type == 'EMPTY' and obj.get(OWNED) and
+            pool = [obj for obj in scene.objects if obj.type == 'EMPTY' and obj.get(OWNED) and not obj.get('rtws_pointer_follow_root') and not obj.children and
                     obj not in tuple(ancestors(settings.origin)) and obj != settings.target]
             obj = next((obj for obj in pool if obj.as_pointer() not in used), None)
             if obj is None:
@@ -202,7 +204,7 @@ class RTWS_OT_clear_pointer_empties(bpy.types.Operator):
         settings = context.scene.rtws_pointer
         settings.enabled = False
         for obj in list(context.scene.objects):
-            if obj.type == 'EMPTY' and obj.get(OWNED) and obj not in (settings.origin, settings.target) and not obj.get('rtws_pointer_recorded'):
+            if obj.type == 'EMPTY' and obj.get(OWNED) and obj not in (settings.origin, settings.target) and not obj.get('rtws_pointer_recorded') and not obj.get('rtws_pointer_follow_root') and not obj.children:
                 bpy.data.objects.remove(obj, do_unlink=True)
         return {'FINISHED'}
 

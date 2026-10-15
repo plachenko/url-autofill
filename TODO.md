@@ -46,3 +46,87 @@ Validated with `test_pointers.py` (protocol and actual sockets) and `test_pointe
 - [x] Verify ordinary playback, saved/reloaded animation, and actual rendering with the add-on disabled, plus real-time socket/timer recording.
 
 Implemented in add-on 1.9.0. Source, vendored WebSocket runtime/license, regression tests and installer builder are now tracked under `blender-addon/`. See its README for usage and test commands.
+
+
+## Build the browser object selector from Blender advertisements
+
+The selected **scene object follows the control Empty**. It does not become the plane origin or the parent of the Empty. Blender add-on 1.10.0 implements discovery and attachment; the browser list UI remains to be built.
+
+### Implemented transport and Blender behavior
+
+- [x] Publish `scene_objects` on connection (when a main-thread snapshot is ready), on metadata/configuration changes, and in reply to `scene_objects_request`. Only the active scene is advertised. The latest render status, when available, precedes the list; normal render/file transfers remain separate.
+- [x] Advertise object IDs, names, `object_type`, `parent_id`, `is_control_root`, `can_follow`, and a disabled `reason`, plus current pointer configuration and the X/Y/Z mapping. IDs are session-scoped and survive renames. Scene identity and `revision` prevent stale selections from attaching the wrong object. A scene reload/switch requires a fresh list.
+- [x] Handle `pointer_follow` on Blender's main thread. Reuse an existing compatible control hierarchy; otherwise parent the selected object under a new control Empty at its world bottom-center (non-geometric objects use their origin), preserving its current world pose. An existing Empty can be used as the target. Keep an independent plane origin so the control cannot feed back through its own moving object.
+- [x] Prevent selection while recording or rendering and reject read-only, stale, missing or invalid targets. Drop pending commands on disconnect. Protect follow roots from extra-pointer reuse and cleanup.
+- [x] Route catalog/reply messages through `src/lib/websocket-scene-objects.js` and the existing WebSocket connection rather than showing metadata as a text/file reply.
+
+### Browser UI work
+
+- [ ] Add an **Object to animate** selector to the Pointers overlay, populated exclusively from `scene_objects.objects`. Use `id` as the option value and show `name` plus `object_type`; disable entries where `can_follow` is false and expose their `reason`. Do not hard-code Ball, Cube or Empty names.
+- [ ] Listen for `websocketSceneMessageEvent` (`urlAutofill:websocket-scene-message`). A null detail means disconnected: clear the catalog and disable the selector. On connect/open, dispatch `websocketSceneCommandEvent` (`urlAutofill:websocket-scene-command`) with `{type:"scene_objects_request"}`. `scene_objects_pending` means wait for the first snapshot.
+- [ ] Build a selection command from the currently displayed scene ID, revision and selected object ID. Use a fresh request ID; optionally send `enable:true` only for an explicit user action that should enable movement. Wait for the matching successful `pointer_follow_result` before treating the selection as attached or starting a new gesture.
+- [ ] Reflect `pointer.followed_object_id`, `target_id`, `origin_id`, `enabled`, `recording`, `rendering`, and `use_browser_plane` from the advertised state. Keep the header plane buttons consistent: x -> YZ, y -> XZ, z -> XY. When Use browser plane is false, Blender's `pointer.plane` wins.
+- [ ] Replace options when the scene/revision changes, retain selection by ID through renames, remove deleted options, and display failures. On stale-list failure, request the list again and let the user reselect rather than silently resending an old attachment. Show `total`/`truncated` when only the first 4096 objects are advertised.
+- [ ] Keep the existing rendered-file preview intact when receiving metadata. Object advertisements contain names/control metadata, not mesh geometry; rendered images/movies still arrive through the existing file protocol.
+- [ ] Validate end to end: select Ball from the saved rig without breaking Ball -> Ball_Deform -> Ball_Control, select an ordinary mesh without a rig, confirm the pose is unchanged at attachment and pointer movement moves the visible object, then test reconnect, rename/deletion, scene switch, recording lock and read-only entries.
+
+### Wire examples
+
+Server advertisement (additional metadata fields are allowed):
+
+```json
+{"type":"scene_objects","version":1,"revision":4,"scene":{"id":"scene-session-id","name":"Scene"},"objects":[{"id":"object-123","name":"Ball","object_type":"MESH","parent_id":null,"is_control_root":false,"can_follow":true,"reason":""}],"total":1,"truncated":false,"pointer":{"origin_id":null,"target_id":null,"followed_object_id":null,"enabled":false,"use_browser_plane":true,"plane":"XY","width":6,"height":2,"recording":false,"rendering":false},"planes":{"x":"YZ","y":"XZ","z":"XY"},"capabilities":["pointer_follow","pointer_plane_set","scene_objects_request"]}
+```
+
+Browser selection:
+
+```json
+{"type":"pointer_follow","request_id":"pick-unique-id","scene_id":"scene-session-id","revision":4,"object_id":"object-123","enable":true}
+```
+
+Server response (a refreshed catalog is also broadcast after a change):
+
+```json
+{"type":"pointer_follow_result","request_id":"pick-unique-id","ok":true,"scene_id":"scene-session-id","revision":5,"object_id":"object-123","target_id":"object-456","origin_id":"object-789","already_following":false,"enabled":true,"message":"Ball follows WebSocket Control - Ball"}
+```
+
+Failures use the same response type/request ID with `ok:false` and `message`. Discovery is capped at 4096 objects; pending scene commands (follow and plane sizing combined) at one per connection and 32 total. Metadata refreshes on the main thread at up to 2 Hz and only changed snapshots are broadcast. Tests: `test_scene_objects.py`, `test_scene_objects_blender.py`, and `test/websocket-scene-objects.test.js`.
+
+### Browser plane size controls
+
+The Blender backend and browser transport are implemented in add-on 1.10.0; the visible width/height controls still need implementation.
+
+- [ ] Add width/height inputs populated from `scene_objects.pointer.width/height`; send `pointer_plane_set` with both dimensions, fresh request ID, scene ID and latest revision through `urlAutofill:websocket-scene-command`.
+- [ ] Handle `pointer_plane_set_result` through `urlAutofill:websocket-scene-message`; display errors and refresh stale metadata. Disable editing while recording/rendering. Dimensions are finite Blender world units in [0.001, 1000000].
+- [x] Blender accepts validated dimension changes on its main thread, acknowledges them, and advertises updated sizes.
+- [x] Show plane bounds when the origin, target Empty, or followed object is selected in Blender, respecting local rotation and browser plane mapping.
+
+- [ ] Show size controls only when `scene_objects.capabilities` includes `pointer_plane_set`. For older servers without discovery/capabilities, keep the existing pointer overlay usable and explain that remote sizing needs the updated add-on.
+- [ ] Label the fields **Plane width** and **Plane height** in Blender world units. Width spans pad left/right; height spans pad down/up. The plane is centered on the origin, so its bounds are +/- width/2 and +/- height/2. Do not interpret these values as screen pixels or apply the origin object's scale.
+- [ ] Keep draft input separate from confirmed server values. Validate both finite numeric values in [0.001, 1000000]; an empty field, NaN, Infinity or out-of-range number must not send a command. Prefer an explicit Apply action; do not send on every keystroke.
+- [ ] Serialize attachment and resizing together: the server permits only one pending scene command per connection (32 total). Disable Apply/selection while waiting; correlate responses by request ID and ignore late replies from a previous connection/scene. Set a bounded timeout, then refresh state and show an actionable error rather than leaving controls stuck or silently retrying.
+- [ ] Before applying a size, end/reset the local gesture and send `pointer_positions` with `phase:"reset"`, `changed:null`, and `pointers:[]` through the existing pointer sender. Pause new pointer sends until the command settles. Blender clears pointer snapshots/bindings after a successful configuration change; require a fresh gesture so existing contacts cannot jump unexpectedly under the new scale.
+- [ ] Read confirmed dimensions and the latest revision from every catalog, including edits made in Blender or by another client. Do not overwrite an unsent draft silently; identify a conflicting remote update and let the user reload/reapply explicitly. A resize can invalidate the revision held by the object selector, and an attachment can invalidate a pending size draft's revision.
+- [ ] Treat the matching successful result as acknowledgement; reconcile with the catalog regardless of which arrives first. On failure preserve confirmed values and show `message`. On a stale revision fetch `scene_objects_request` and require a fresh Apply. Never send a stored command automatically after reconnect or scene change.
+- [ ] Explain viewport visibility near the controls/help: select the configured origin, target Empty, or followed object in Blender and enable viewport Overlays to see the plane bounds. Browser sizing does not select Blender objects. With Use browser plane enabled, active browser planes determine the outline; otherwise Blender's configured plane wins.
+- [ ] Test browser-to-Blender resizing for X/Y/Z, local origin rotation, edits from Blender/another client, pending attachment versus Apply, invalid input, recording/rendering locks, stale revisions, disconnect/reconnect, scene switch, and timeout. Verify width/height acknowledgements and catalogs never replace the rendered-file preview, active gestures reset safely, and viewport bounds match the resulting movement range.
+
+Resize request (use the **latest** advertised scene ID/revision):
+
+```json
+{"type":"pointer_plane_set","request_id":"size-unique-id","scene_id":"scene-session-id","revision":5,"width":8,"height":6}
+```
+
+Successful response (updated `scene_objects` is also broadcast):
+
+```json
+{"type":"pointer_plane_set_result","request_id":"size-unique-id","ok":true,"scene_id":"scene-session-id","revision":6,"width":8,"height":6}
+```
+
+Failure response (scene ID/revision may also be present):
+
+```json
+{"type":"pointer_plane_set_result","request_id":"size-unique-id","ok":false,"message":"Plane settings changed; refresh scene_objects and try again"}
+```
+
+Use the exported event constants and validators in `src/lib/websocket-scene-objects.js`; send through the existing WebSocket panel rather than opening a second connection. Request IDs/scene IDs must be nonempty strings of at most 128 characters; revisions are positive safe integers. Both dimensions are required for each resize. Backend tests: `blender-addon/test_scene_objects.py`, `blender-addon/test_plane_blender.py`, and `blender-addon/test_plane_view_blender.py`; browser protocol tests: `test/websocket-scene-objects.test.js`. The unchecked browser UI and end-to-end tasks above remain outstanding.

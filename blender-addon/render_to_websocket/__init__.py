@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Render to WebSocket",
     "author": "Denis Perchenko",
-    "version": (1, 9, 0),
+    "version": (1, 10, 0),
     "blender": (4, 2, 0),
     "location": "Edit > Preferences > Add-ons; Render menu > Send Last Render to WebSocket",
     "description": "Transfers completed render files as verified base64 chunks over WebSocket",
@@ -27,7 +27,7 @@ def _refresh_progress():
     return 0.25
 import re, glob, shutil, subprocess
 
-VERSION_STR = "Render to WebSocket v1.9.0"
+VERSION_STR = "Render to WebSocket v1.10.0"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _VENDOR = os.path.join(_HERE, "vendor")
@@ -84,9 +84,37 @@ from .pointer_control import (PointerController, RTWS_PointerSettings, RTWS_OT_p
 POINTER = PointerController()
 from .recording import PointerRecorder, RTWS_OT_record_start, RTWS_OT_record_stop
 RECORDER = PointerRecorder()
+from .scene_objects import SceneObjectCatalog
+SCENE_OBJECTS = SceneObjectCatalog()
 from .server import RenderServer
 SERVER = RenderServer(progress=_progress, record=_record, redraw=_tag_redraw,
                       stop_tunnel=TUNNEL.stop)
+
+
+def _scene_objects_tick():
+    try:
+        scene = bpy.context.scene
+        if scene is None or not SERVER.running:
+            return .5
+        rendering = bpy.app.is_job_running('RENDER')
+        SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering)
+        for client, request in SERVER.object_requests.drain():
+            try:
+                if bpy.app.is_job_running('RENDER'):
+                    raise ValueError('Finish rendering before changing the followed object')
+                operation = SCENE_OBJECTS.set_plane if request.get('type') == 'pointer_plane_set' else SCENE_OBJECTS.follow
+                result = operation(scene, request, RECORDER.running)
+                SERVER.pointers.clear()
+                POINTER.reset()
+            except Exception as exc:
+                result = dict(type=request.get('type', 'pointer_follow') + '_result', request_id=request['request_id'], ok=False,
+                              message=str(exc), scene_id=SCENE_OBJECTS.scene_id, revision=SCENE_OBJECTS.revision)
+            SERVER.publish_scene_objects(SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering))
+            SERVER.reply_scene_object(client, result)
+        SERVER.publish_scene_objects(SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering))
+    except Exception as exc:
+        _log('Scene object advertisement failed:', str(exc))
+    return .5
 
 
 def _pointer_tick():
@@ -123,6 +151,8 @@ def _pointer_tick():
 @bpy.app.handlers.persistent
 def _pointer_load_reset(*args):
     RECORDER.stop(reason='Recording stopped: loading a blend file')
+    SCENE_OBJECTS.reset()
+    SERVER.clear_scene_objects()
     SERVER.pointers.clear()
     POINTER.reset()
 
@@ -830,6 +860,8 @@ H = bpy.app.handlers
 
 
 def register():
+    from . import plane_view
+    plane_view.register(POINTER)
     atexit.register(SERVER.stop)
     bpy.utils.register_class(RTWS_OT_record_start)
     bpy.utils.register_class(RTWS_OT_record_stop)
@@ -838,6 +870,7 @@ def register():
     bpy.utils.register_class(RTWS_OT_pointer_empty)
     bpy.utils.register_class(RTWS_OT_clear_pointer_empties)
     bpy.app.timers.register(_pointer_tick, persistent=True)
+    bpy.app.timers.register(_scene_objects_tick, first_interval=.1, persistent=True)
     if _pointer_load_reset not in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.append(_pointer_load_reset)
     bpy.utils.register_class(RTWS_OT_tunnel_start)
@@ -861,10 +894,15 @@ def register():
 
 
 def unregister():
+    from . import plane_view
+    plane_view.unregister()
     atexit.unregister(SERVER.stop)
     SERVER.stop()
     RECORDER.stop(reason='Recording stopped: add-on disabled')
     POINTER.reset()
+    SCENE_OBJECTS.reset()
+    if bpy.app.timers.is_registered(_scene_objects_tick):
+        bpy.app.timers.unregister(_scene_objects_tick)
     if bpy.app.timers.is_registered(_pointer_tick):
         bpy.app.timers.unregister(_pointer_tick)
     if _pointer_load_reset in bpy.app.handlers.load_pre:

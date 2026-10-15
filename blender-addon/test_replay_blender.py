@@ -40,7 +40,7 @@ try:
     properties = addon.RTWS_Prefs.bl_rna.properties
     assert properties['replay_cache_mb'].default == 256
     assert properties['replay_cache_mb'].hard_max == 512
-    assert addon.bl_info['version'] == (1, 9, 0)
+    assert addon.bl_info['version'] == (1, 10, 0)
     with tempfile.TemporaryDirectory(prefix='rtws_blender_replay_') as folder:
         scene = bpy.context.scene
         scene.render.engine = 'BLENDER_EEVEE'
