@@ -3,15 +3,10 @@
   import WebSocketPanel from "./WebSocketPanel.svelte";
   let clipsOpen = false;
   let clipSection = 'saved';
-  let pointerAvailable = false;
-  function connectionChanged(value) {
-    pointerAvailable = value;
-    if (!value && clipSection === 'pointers') clipSection = 'import';
-  }
   function switchClipSection(event) {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    const sections = pointerAvailable ? ['saved', 'import', 'pointers'] : ['saved', 'import'];
+    const sections = ['saved', 'import'];
     const offset = event.key === 'ArrowRight' ? 1 : sections.length - 1;
     clipSection = sections[(sections.indexOf(clipSection) + offset) % sections.length];
     document.getElementById(`timeline-${clipSection}-tab`)?.focus();
@@ -51,16 +46,12 @@
             aria-selected={clipSection === 'saved'} onclick={() => clipSection = 'saved'}>Saved</button>
           <button id="timeline-import-tab" type="button" role="tab" aria-controls="timeline-import-content"
             aria-selected={clipSection === 'import'} onclick={() => { clipsOpen = true; clipSection = 'import'; }}>Import</button>
-          {#if pointerAvailable}
-            <button id="timeline-pointers-tab" type="button" role="tab" aria-controls="timeline-pointers-content"
-              aria-selected={clipSection === 'pointers'} onclick={() => clipSection = 'pointers'}>Pointers</button>
-          {/if}
         </div>
         <div id="timeline-saved-content" role="tabpanel" aria-labelledby="timeline-saved-tab" hidden={clipSection !== 'saved'}>
           <div id="timeline-clips-list"></div>
           <p id="timeline-clips-status" role="status" aria-live="polite"></p>
         </div>
-        <WebSocketPanel importOpen={clipsOpen && clipSection === 'import'} pointersOpen={clipsOpen && clipSection === 'pointers'} onConnectionChange={connectionChanged} />
+        <WebSocketPanel importOpen={clipsOpen && clipSection === 'import'} />
       </aside>
       <div class="timeline-side-tabs" aria-label="Timeline side tabs">
         <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"

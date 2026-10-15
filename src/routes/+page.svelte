@@ -5,6 +5,7 @@
   import ControlsDrawer from '../lib/components/ControlsDrawer.svelte';
   import Stage from '../lib/components/Stage.svelte';
   import TimelineEditor from '../lib/components/TimelineEditor.svelte';
+  import PointerOverlay from '../lib/components/PointerOverlay.svelte';
   import { initialize } from '../lib/legacy-controller.js';
   import '../app.css';
 
@@ -93,3 +94,4 @@
     <TimelineEditor />
   </Pane>
 </PaneGroup>
+<PointerOverlay />

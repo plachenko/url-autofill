@@ -11,13 +11,14 @@ The Blender add-on currently sends the latest `render_progress` status to a new 
 
 ## Handle pointer positions in the Blender add-on
 
-The Clips → Pointers touch surface appears while connected and sends JSON over the existing WebSocket connection. The add-on needs a handler for `pointer_positions` messages. Each message contains `phase` (`down`, `move`, `up`, `cancel`, `hover`, or `reset`), `changed` (the pointer that caused the event, or null for `reset`), and `pointers` (all contacts still down after the event). Example:
+The header Pointers button opens a capture overlay across the preview and timeline while connected. The add-on needs a handler for its `pointer_positions` messages. Each message contains `plane` (`x`, `y`, or `z`), `phase` (`down`, `move`, `up`, `cancel`, `hover`, or `reset`), `changed` (the pointer that caused the event, or null for `reset`), and `pointers` (all contacts still down after the event). Example:
 
 ```json
-{"type":"pointer_positions","phase":"move","changed":{"id":9,"x":0.8,"y":0.7,"kind":"touch","pressure":0.5},"pointers":[{"id":5,"x":0.2,"y":0.3,"kind":"touch","pressure":0.5},{"id":9,"x":0.8,"y":0.7,"kind":"touch","pressure":0.5}]}
+{"type":"pointer_positions","phase":"move","plane":"z","changed":{"id":9,"x":0.8,"y":0.7,"kind":"touch","pressure":0.5},"pointers":[{"id":5,"x":0.2,"y":0.3,"kind":"touch","pressure":0.5},{"id":9,"x":0.8,"y":0.7,"kind":"touch","pressure":0.5}]}
 ```
 
-- Treat `x` and `y` as normalized coordinates from the pad's top-left corner, both in `[0, 1]`. `kind` is `touch`, `mouse`, or `pen`; `pressure` is in `[0, 1]`.
+- Treat pointer `x` and `y` as normalized coordinates from the overlay's top-left corner, both in `[0, 1]`. `kind` is `touch`, `mouse`, or `pen`; `pressure` is in `[0, 1]`.
+- Map `plane: "x"` to Blender's YZ plane, `"y"` to XZ, and `"z"` to XY. Z is selected by default. Clear contacts for the previous plane on `reset` when the user changes planes or closes the overlay.
 - Keep contacts separate by WebSocket client and pointer `id`. Use the full `pointers` array to update simultaneous touches; `up` and `cancel` omit the ended contact from that array.
 - Clear a client's contacts on `reset` and whenever its socket closes. `hover` sends a mouse position without an active contact.
 - Decide how these coordinates should control a Blender view or tool, and apply Blender API changes on its main thread. Keep this message type separate from render progress and file transfer messages.

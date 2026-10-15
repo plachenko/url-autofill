@@ -359,7 +359,7 @@
   #compositor .clip-panel-tabs button { flex: 1 1 0; min-width: 0; min-height: 32px;
     padding: 3px 6px; font-size: 12px; }
   .clip-panel-tabs button[aria-selected="true"] { background: #396eaf; border-color: #70d8ff; }
-  #timeline-saved-content[hidden], #timeline-import-content[hidden], #timeline-pointers-content[hidden] { display: none; }
+  #timeline-saved-content[hidden], #timeline-import-content[hidden] { display: none; }
   #timeline-clips-list { display: grid; gap: 7px; }
   #compositor .timeline-clip-card { display: grid; gap: 3px; width: 100%; min-height: 0;
     padding: 4px; border: 1px solid #7085a1; border-radius: 5px;
@@ -410,6 +410,17 @@
   #menu-toggle, #page-fullscreen, #tesla-theater-button {  z-index: 1001; width: 44px; min-height: 44px; padding: 4px;
     border: 1px solid #7085a1; border-radius: 10px; color: #fff; background: #182130e6;
     font-size: 24px; }
+  .header-websocket { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .header-websocket select { width: clamp(82px, 22vw, 190px); min-width: 0; height: 40px;
+    padding: 4px; border: 1px solid #7085a1; border-radius: 6px;
+    background: #182130; color: #fff; font: 13px system-ui, sans-serif; }
+  #header-websocket-connect { min-height: 40px; padding: 5px 8px; border-radius: 6px;
+    font-size: 13px; white-space: nowrap; }
+  #header-websocket-connect:disabled { opacity: .7; cursor: progress; }
+  .header-websocket-status { color: #b9e4d0; font: 12px system-ui, sans-serif; }
+  #header-pointers-toggle { min-height: 40px; padding: 5px 8px; border-radius: 6px;
+    font-size: 13px; white-space: nowrap; }
+  #header-pointers-toggle[aria-pressed="true"] { border-color: #70d8ff; background: #396eaf; }
   #menu-toggle svg, #page-fullscreen svg, #menu-close svg { display: block; width: 22px;
     height: 22px; margin: auto; fill: none; stroke: currentColor; stroke-width: 2.5;
     stroke-linecap: round; stroke-linejoin: round; }
@@ -451,17 +462,20 @@
   #timeline-import-content #websocket-panel textarea { min-height: 72px; font-size: 14px; }
   #timeline-import-content #websocket-panel button { min-width: 0; overflow-wrap: anywhere; }
   .websocket-save-clip { padding-top: 10px; border-top: 1px solid #7085a1; }
-  .websocket-pointer-control { margin: 12px 0; padding: 8px; border: 1px solid #7085a1;
-    border-radius: 8px; background: #101b2a; }
-  #timeline-pointers-content .websocket-pointer-control { margin: 0; }
-  .websocket-pointer-control strong { display: block; }
-  .websocket-pointer-surface { position: relative; height: 160px; overflow: hidden;
-    border: 2px solid #70d8ff; border-radius: 8px; touch-action: none; user-select: none;
-    background-color: #142b3d;
-    background-image: linear-gradient(#70d8ff24 1px, transparent 1px),
-      linear-gradient(90deg, #70d8ff24 1px, transparent 1px);
-    background-size: 25% 25%; cursor: crosshair; }
-  .websocket-pointer-surface.is-disconnected { opacity: .45; pointer-events: none; }
+  #pointer-overlay { position: fixed; inset: 50px 0 0; z-index: 1000;
+    display: flex; flex-direction: column; padding: 8px; background: #101b2a88; }
+  .pointer-overlay-surface { position: relative; flex: 1 1 auto; min-height: 0;
+    overflow: hidden; border: 2px solid #70d8ff; border-radius: 8px;
+    touch-action: none; user-select: none; cursor: crosshair;
+    background-image: linear-gradient(#70d8ff16 1px, transparent 1px),
+      linear-gradient(90deg, #70d8ff16 1px, transparent 1px);
+    background-size: 10% 10%; }
+  .pointer-overlay-hint { position: absolute; top: 8px; left: 8px; pointer-events: none;
+    padding: 4px 8px; border-radius: 5px; background: #10151edb; color: #fff;
+    font: 13px system-ui, sans-serif; }
+  .pointer-overlay-planes { display: flex; justify-content: center; gap: 8px; padding-top: 8px; }
+  .pointer-overlay-planes button { min-width: 64px; min-height: 48px; padding: 5px 12px; }
+  .pointer-overlay-planes button[aria-pressed="true"] { border-color: #70d8ff; background: #396eaf; }
   .websocket-pointer-marker { position: absolute; display: grid; place-items: center;
     width: 28px; height: 28px; transform: translate(-50%, -50%); border: 2px solid #10151e;
     border-radius: 50%; background: #ffd976; color: #10151e; font: 700 11px system-ui, sans-serif;
@@ -522,6 +536,10 @@
   #drawer details { margin-top: 12px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { :root { --timeline-height: 230px; }
+    .header-websocket select { width: 64px; }
+    #header-websocket-connect, #header-pointers-toggle { padding-inline: 5px; font-size: 12px; }
+    .header-websocket-status { position: absolute; width: 1px; height: 1px;
+      overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .buttons { grid-template-columns: repeat(2, 1fr); }
     #compositor { padding-inline: 8px; }
     #timeline-controls { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
@@ -532,6 +550,7 @@
     #timeline-image-form input { font-size: 12px; }
     #composition-time { display: none; }
   }
+  @media (max-width: 400px) { .header-websocket select { display: none; } }
   @media (prefers-reduced-motion: reduce) {
     .track-heading:not(.timeline-zoom), .track-row[data-track] .track-lane,
     .clip-tile, .collapsed-clip { transition: none; }

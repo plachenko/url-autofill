@@ -16,7 +16,8 @@ test('multi-touch messages include every active contact and identify the changed
   const first = { id: 5, x: .2, y: .3, kind: 'touch', pressure: .5 };
   const second = { id: 9, x: .8, y: .7, kind: 'touch', pressure: .5 };
   assert.deepEqual(pointerPositionsMessage('move', second, [second, first]), {
-    type: 'pointer_positions', phase: 'move', changed: second, pointers: [first, second]
+    type: 'pointer_positions', phase: 'move', plane: 'z', changed: second, pointers: [first, second]
   });
   assert.deepEqual(pointerPositionsMessage('up', first, [second]).pointers, [second]);
+  assert.equal(pointerPositionsMessage('down', first, [first], 'x').plane, 'x');
 });

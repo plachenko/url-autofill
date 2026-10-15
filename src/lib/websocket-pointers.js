@@ -1,4 +1,7 @@
 const clamp = value => Math.max(0, Math.min(1, value));
+export const websocketPointerMessageEvent = 'urlAutofill:websocket-pointer-message';
+export const websocketPointerOverlayEvent = 'urlAutofill:websocket-pointer-overlay';
+export const websocketPointerOverlayStateEvent = 'urlAutofill:websocket-pointer-overlay-state';
 
 export function pointerPosition(event, bounds) {
   const x = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0;
@@ -12,7 +15,7 @@ export function pointerPosition(event, bounds) {
   };
 }
 
-export function pointerPositionsMessage(phase, changed, activePointers) {
-  return { type: 'pointer_positions', phase, changed,
+export function pointerPositionsMessage(phase, changed, activePointers, plane = 'z') {
+  return { type: 'pointer_positions', phase, plane, changed,
     pointers: [...activePointers].sort((a, b) => a.id - b.id) };
 }
