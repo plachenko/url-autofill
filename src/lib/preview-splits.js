@@ -324,9 +324,9 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
       video.loop = false;
       video.controls = false;
       if (video.readyState < 1) continue;
-      const target = entry.sourceStart + previewTime - entry.start;
+      const target = (entry.item.sourceOffset || 0) + entry.sourceStart + previewTime - entry.start;
       if (seek || Math.abs(video.currentTime - target) > (independentClip ? .2 : .08))
-        video.currentTime = Math.max(0, Math.min(entry.item.duration, target));
+        video.currentTime = Math.max(0, Math.min((entry.item.sourceOffset || 0) + entry.item.duration, target));
       if (independentClip || (playing && !locked)) {
         if (video.paused) void video.play().catch(() => {});
       } else video.pause();

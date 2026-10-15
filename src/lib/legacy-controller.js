@@ -705,6 +705,7 @@ import { createPreviewSplits } from './preview-splits.js';
       url.hash = '';
       window.location.replace(url.href);
     }
+    window.addEventListener('urlAutofill:flush-archive', () => { saveMemory(); saveSession(true); saveTracks(); });
     async function saveCurrentProject() {
       saveMemory();
       saveSession(true);
@@ -1215,7 +1216,7 @@ import { createPreviewSplits } from './preview-splits.js';
     }
     function clipDetail(id) {
       if (!clipDetails.has(id)) {
-        const promise = loadMediaAsync(id).then(item => item.type === 'image' ? Promise.resolve({ ...item, duration: item.seconds }) :
+        const promise = loadMediaAsync(id).then(item => item.type === 'image' || Number.isFinite(item.duration) ? Promise.resolve({ ...item, duration: item.duration || item.seconds }) :
           new Promise(resolve => {
             const probe = document.createElement('video');
             let done = false;
@@ -1382,10 +1383,10 @@ import { createPreviewSplits } from './preview-splits.js';
           compositionVideo.src = active.item.src;
           compositionVideo.onloadedmetadata = () => {
             if (visibleItem !== active) return;
-            compositionVideo.currentTime = Math.min(active.item.duration,
-              active.sourceStart + Math.max(0, session.playheadSeconds - active.start));
+            compositionVideo.currentTime = Math.min((active.item.sourceOffset || 0) + active.item.duration,
+              (active.item.sourceOffset || 0) + active.sourceStart + Math.max(0, session.playheadSeconds - active.start));
             session.renderFrameSeconds = session.lockRenderFrame ?
-              session.playheadSeconds : active.start + compositionVideo.currentTime - active.sourceStart;
+              session.playheadSeconds : active.start + compositionVideo.currentTime - (active.item.sourceOffset || 0) - active.sourceStart;
             syncCompositionPreview();
             if (compositionPlaying && !session.lockRenderFrame)
               void compositionVideo.play().catch(() => stopComposition());
@@ -1394,16 +1395,16 @@ import { createPreviewSplits } from './preview-splits.js';
         }
       }
       if (active?.item.type === 'video' && compositionVideo.readyState >= 1) {
-        const offset = active.sourceStart + session.playheadSeconds - active.start;
+        const offset = (active.item.sourceOffset || 0) + active.sourceStart + session.playheadSeconds - active.start;
         if (seek || (session.lockRenderFrame && Math.abs(compositionVideo.currentTime - offset) > .015)) {
-          compositionVideo.currentTime = Math.min(active.item.duration, Math.max(0, offset));
+          compositionVideo.currentTime = Math.min((active.item.sourceOffset || 0) + active.item.duration, Math.max(0, offset));
         }
         if (compositionPlaying && !session.lockRenderFrame && compositionVideo.paused)
           void compositionVideo.play().catch(() => stopComposition());
         if ((!compositionPlaying || session.lockRenderFrame) && !compositionVideo.paused)
           compositionVideo.pause();
         session.renderFrameSeconds = session.lockRenderFrame ?
-          session.playheadSeconds : active.start + compositionVideo.currentTime - active.sourceStart;
+          session.playheadSeconds : active.start + compositionVideo.currentTime - (active.item.sourceOffset || 0) - active.sourceStart;
       }
       if (active?.item.type === 'image') {
         const state = imagePreview?.entry === active && imagePreview.ready ? imagePreview : null;
@@ -2138,7 +2139,7 @@ import { createPreviewSplits } from './preview-splits.js';
             thumbnail.playsInline = true;
             thumbnail.preload = 'metadata';
             thumbnail.addEventListener('loadedmetadata', () => {
-              thumbnail.currentTime = Math.min(.1, thumbnail.duration / 2);
+              thumbnail.currentTime = (item.sourceOffset || 0) + Math.min(.1, item.duration / 2);
             }, { once: true });
           } else {
             thumbnail.width = 160;

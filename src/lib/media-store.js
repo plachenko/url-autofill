@@ -83,7 +83,7 @@ export function loadMedia(id) {
   if (meta.storage === 'blob') {
     const src = cachedReceivedBlobUrl(meta.blobId);
     if (!src) throw new Error('Received clip is still loading.');
-    return { id, type: meta.mime.startsWith('video/') ? 'video' : 'image', src, seconds: meta.seconds };
+    return { id, type: meta.mime.startsWith('video/') ? 'video' : 'image', src, seconds: meta.seconds, ...(Number.isFinite(meta.archiveDuration) ? { duration: meta.archiveDuration, sourceOffset: meta.archiveStart || 0 } : {}) };
   }
   const parts = [];
   for (let index = 1; index <= meta.total; index++) {

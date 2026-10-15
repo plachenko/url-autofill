@@ -3,6 +3,8 @@
   import { adoptTeslaTheaterLink, canShowTeslaTheater, hasTeslaTheaterPreference,
     isTeslaCarBrowser, teslaTheaterPreferenceEvent, teslaTheaterPreferenceKey } from '../tesla-browser.js';
   import MemoryBar from "./MemoryBar.svelte";
+  import ClipArchive from "./ClipArchive.svelte";
+  import StorageBar from "./StorageBar.svelte";
   import ClipLibrary from "./ClipLibrary.svelte";
   import HelpPanel from "./HelpPanel.svelte";
 
@@ -68,6 +70,8 @@
     {/if}
   </details>
   <MemoryBar />
+  <StorageBar />
+  <ClipArchive />
   <label for="text">You said</label>
   <textarea id="text" placeholder="Your URL can fill this for you"></textarea>
   <ClipLibrary />
