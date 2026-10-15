@@ -32,6 +32,11 @@ Implemented in Blender add-on 1.8.0. In Output Properties > Render to WebSocket 
 
 Validated with `test_pointers.py` (protocol and actual sockets) and `test_pointers_blender.py` (actual Empty transforms, all three planes, rotated/moving origin, parented target, opt-in, fast taps, save/reload, cancellation, disconnect/reconnect, and thread guard). Installer: `blender-addon/build.py`.
 
+### Browser X/Y/Z plane follow-up
+
+- [ ] With the built add-on installed, connect the browser and select X, Y, then Z in the Pointers overlay. Confirm the target Empty moves on YZ, XZ, then XY, using the configured plane width and height.
+- [ ] Switch planes during an active multi-touch gesture and during a recording. Confirm the old plane's contacts reset, the next contacts use the newly selected plane, and the recorded keyframes contain no stale movement from the previous plane.
+- [ ] Repeat with **Use browser plane** disabled and confirm the Blender plane selection remains in control for all three browser buttons.
 
 ## Record pointer movement as animation
 
