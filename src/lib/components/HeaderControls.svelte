@@ -67,7 +67,7 @@
   });
 </script>
 
-<div class="h-[50px] flex flex-1 place-items-center">
+<div class="app-header">
   <div class="flex-1 p-2">
     <button
       id="menu-toggle"

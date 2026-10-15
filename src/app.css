@@ -202,6 +202,8 @@
   .clip-tile .clip-select[aria-pressed="true"] { background: #70d8ff; color: #10151e; }
   .speech-word.active { color: #fff; background: #ffffff12; border-radius: 3px; }
   body { padding: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  .app-header { display: flex; flex: 0 0 50px; align-items: center;
+    width: 100%; height: 50px; min-height: 50px; }
   #stage { flex: 1 1 auto; width: 100%; max-width: none; min-height: 0;
     position: relative; overflow: hidden; background: #10151e; }
   #preview-layout { position: absolute; inset: 0; overflow: hidden; }
