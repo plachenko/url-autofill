@@ -1139,7 +1139,6 @@ import { createPreviewSplits } from './preview-splits.js';
       layout: document.getElementById('preview-layout'),
       verticalButton: document.getElementById('preview-split-vertical'),
       horizontalButton: document.getElementById('preview-split-horizontal'),
-      closeButton: document.getElementById('preview-close-view'),
       getSnapshot: () => ({ tracks, items: compositionItems,
         seconds: session.playheadSeconds, locked: session.lockRenderFrame,
         playing: compositionPlaying, activeTrack, selectedClips }),

@@ -4,8 +4,8 @@ const storageKey = 'urlAutofill.previewSplits.v1';
 const maxViews = 8;
 
 export function createPreviewSplits({ layout, verticalButton, horizontalButton,
-  closeButton, getSnapshot, resolveImage, onLayoutChange = () => {} }) {
-  const primary = layout.querySelector('[data-preview-primary]');
+  getSnapshot, resolveImage, onLayoutChange = () => {} }) {
+  let primary = layout.querySelector('[data-preview-primary]');
   const views = new Set([primary]);
   const viewState = new WeakMap();
   let active = primary;
@@ -39,10 +39,86 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     active.classList.remove('is-active');
     active = view;
     active.classList.add('is-active');
-    closeButton.disabled = active === primary;
+    for (const item of views) item.querySelector('.preview-close').disabled = views.size === 1;
     const full = views.size >= maxViews;
     verticalButton.disabled = full;
     horizontalButton.disabled = full;
+  }
+
+  function swapViews(first, second) {
+    if (first === second || !views.has(first) || !views.has(second)) return;
+    const placeholder = document.createComment('moving preview');
+    first.replaceWith(placeholder);
+    second.replaceWith(first);
+    placeholder.replaceWith(second);
+    selectView(first);
+    persist();
+    onLayoutChange();
+    sync(true);
+  }
+
+  function panelAt(clientX, clientY) {
+    const view = document.elementFromPoint(clientX, clientY)?.closest('.preview-view');
+    return views.has(view) ? view : null;
+  }
+
+  function dragPanel(event, view) {
+    if (event.button !== 0 || !event.isPrimary) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectView(view);
+    const pointerId = event.pointerId;
+    const ghost = document.createElement('div');
+    ghost.className = 'preview-drag-ghost';
+    ghost.textContent = 'Move preview';
+    document.body.append(ghost);
+    let target = null;
+    const move = next => {
+      if (next.pointerId !== pointerId) return;
+      ghost.style.left = `${next.clientX + 12}px`;
+      ghost.style.top = `${next.clientY + 12}px`;
+      const nextTarget = panelAt(next.clientX, next.clientY);
+      if (target !== nextTarget) {
+        target?.classList.remove('preview-panel-drop-target');
+        target = nextTarget !== view ? nextTarget : null;
+        target?.classList.add('preview-panel-drop-target');
+      }
+    };
+    const end = next => {
+      if (next.pointerId !== pointerId) return;
+      move(next);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      target?.classList.remove('preview-panel-drop-target');
+      ghost.remove();
+      if (next.type === 'pointerup' && target) swapViews(view, target);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    move(event);
+  }
+
+  function decorateView(view) {
+    const controls = document.createElement('div');
+    controls.className = 'preview-panel-controls';
+    const move = document.createElement('button');
+    move.type = 'button';
+    move.className = 'preview-move';
+    move.textContent = '⠿';
+    move.title = 'Drag to move this preview onto another panel';
+    move.setAttribute('aria-label', 'Drag to move preview panel');
+    move.addEventListener('pointerdown', event => dragPanel(event, view));
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'preview-close';
+    close.textContent = '×';
+    close.title = 'Close this preview panel';
+    close.setAttribute('aria-label', 'Close preview panel');
+    close.addEventListener('click', () => closeView(view));
+    controls.append(move, close);
+    view.append(controls);
   }
 
   function sourceOptions(select, requestedSource, droppedImage = null) {
@@ -115,6 +191,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     empty.className = 'preview-source-empty';
     surface.append(image, video, empty);
     view.append(surface, select);
+    decorateView(view);
     view.addEventListener('pointerdown', () => selectView(view));
     select.addEventListener('change', () => {
       const state = viewState.get(view);
@@ -241,26 +318,34 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   }
 
   function closeView(closing) {
-    if (!closing || closing === primary || !views.has(closing)) return;
+    if (!closing || views.size === 1 || !views.has(closing)) return;
     const branch = closing.parentElement;
     const split = branch.parentElement;
     const sibling = split.children[branch === split.children[0] ? 2 : 0].firstElementChild;
-    const closingState = viewState.get(closing);
-    closingState.video.pause();
-    if (closingState.droppedImage?.objectUrl) URL.revokeObjectURL(closingState.droppedImage.src);
+    if (closing === primary) {
+      const replacement = [...views].find(view => view !== closing);
+      const replacementState = viewState.get(replacement);
+      replacementState.video.pause();
+      if (replacementState.droppedImage?.objectUrl) URL.revokeObjectURL(replacementState.droppedImage.src);
+      clearPrimaryOverride();
+      replacement.replaceChildren(closing.querySelector('#render-surface'));
+      delete closing.dataset.previewPrimary;
+      replacement.dataset.previewPrimary = 'true';
+      primary = replacement;
+    } else {
+      const closingState = viewState.get(closing);
+      closingState.video.pause();
+      if (closingState.droppedImage?.objectUrl) URL.revokeObjectURL(closingState.droppedImage.src);
+    }
     views.delete(closing);
     split.replaceWith(sibling);
+    if (!primary.querySelector('.preview-panel-controls')) decorateView(primary);
     onLayoutChange();
     const nextActive = active === closing
-      ? sibling.classList.contains('preview-view') ? sibling : sibling.querySelector('.preview-view')
-      : active;
+      ? primary : active;
     selectView(nextActive);
     persist();
     sync(true);
-  }
-
-  function closeActive() {
-    closeView(active);
   }
 
   function sync(seek = false) {
@@ -526,10 +611,59 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     } else clearDropTarget();
   });
 
+  function dragSplit(event, direction) {
+    if (event.button !== 0 || !event.isPrimary || views.size >= maxViews) return;
+    event.preventDefault();
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let moved = false;
+    let target = null;
+    const ghost = document.createElement('div');
+    ghost.className = 'preview-drag-ghost';
+    ghost.textContent = direction === 'vertical' ? 'Split left and right' : 'Split top and bottom';
+    document.body.append(ghost);
+    const move = next => {
+      if (next.pointerId !== pointerId) return;
+      moved ||= Math.hypot(next.clientX - startX, next.clientY - startY) > 8;
+      ghost.style.left = `${next.clientX + 12}px`;
+      ghost.style.top = `${next.clientY + 12}px`;
+      const view = moved ? panelAt(next.clientX, next.clientY) : null;
+      if (target === view) return;
+      target = view;
+      clearDropTarget();
+      if (view) {
+        const side = direction === 'vertical' ? 'left' : 'bottom';
+        dropHighlight.className = `preview-drop-highlight preview-drop-${side}`;
+        dropHighlight.textContent = direction === 'vertical' ? 'Create side preview' : 'Create lower preview';
+        view.append(dropHighlight);
+      }
+    };
+    const end = next => {
+      if (next.pointerId !== pointerId) return;
+      move(next);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      ghost.remove();
+      clearDropTarget();
+      if (next.type !== 'pointerup') return;
+      if (moved) {
+        if (target) splitView(target, direction, 'selected', direction === 'vertical' ? 'left' : 'bottom');
+      } else splitActive(direction);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    move(event);
+  }
+
+  decorateView(primary);
   primary.addEventListener('pointerdown', () => selectView(primary));
-  verticalButton.addEventListener('click', () => splitActive('vertical'));
-  horizontalButton.addEventListener('click', () => splitActive('horizontal'));
-  closeButton.addEventListener('click', closeActive);
+  verticalButton.addEventListener('pointerdown', event => dragSplit(event, 'vertical'));
+  horizontalButton.addEventListener('pointerdown', event => dragSplit(event, 'horizontal'));
+  verticalButton.addEventListener('click', event => { if (event.detail === 0) splitActive('vertical'); });
+  horizontalButton.addEventListener('click', event => { if (event.detail === 0) splitActive('horizontal'); });
   function restoreSavedLayout() {
     try {
       const saved = JSON.parse(window.localStorage.getItem(storageKey));

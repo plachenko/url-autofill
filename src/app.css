@@ -236,11 +236,30 @@
     padding: 5px 8px; border: 1px solid #ff876d; border-radius: 4px;
     background: #301c1cdd; color: #fff; font: 12px system-ui, sans-serif;
     white-space: nowrap; pointer-events: none; }
-  #preview-view-controls { position: absolute; top: 8px; right: 8px; z-index: 12;
-    display: flex; gap: 4px; padding: 3px; border-radius: 6px; background: #10151ed9; }
-  #preview-view-controls button { min-height: 32px; padding: 3px 6px; border-radius: 4px;
-    font-size: 12px; }
+  #preview-view-controls { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
+  #preview-view-controls button { position: absolute; display: grid; place-items: center;
+    width: 44px; height: 44px; padding: 8px; border-radius: 8px; background: #182130ed;
+    box-shadow: 0 2px 10px #0008; touch-action: none; cursor: grab; pointer-events: auto; }
+  #preview-view-controls button:active { cursor: grabbing; }
+  #preview-split-vertical { left: 0; top: 50%; transform: translateY(-50%); border-radius: 0 8px 8px 0 !important; }
+  #preview-split-horizontal { left: 50%; bottom: 0; transform: translateX(-50%); border-radius: 8px 8px 0 0 !important; }
+  #preview-view-controls svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2; }
   #preview-view-controls button:disabled { opacity: .45; cursor: default; }
+  .preview-panel-controls { position: absolute; top: 8px; right: 8px; z-index: 6;
+    display: flex; gap: 4px; padding: 3px; border-radius: 6px; background: #10151ed9; }
+  .preview-panel-controls button { display: grid; place-items: center; width: 32px; height: 32px;
+    padding: 3px; border-radius: 4px; font: 18px system-ui, sans-serif; }
+  .preview-panel-controls .preview-move { touch-action: none; cursor: grab; }
+  .preview-panel-controls .preview-move:active { cursor: grabbing; }
+  .preview-panel-controls .preview-close:disabled { opacity: .4; cursor: default; }
+  .preview-drag-ghost { position: fixed; z-index: 2001; padding: 7px 10px;
+    border: 1px solid #70d8ff; border-radius: 6px; background: #182130ee;
+    color: #fff; font: 13px system-ui, sans-serif; pointer-events: none; }
+  .preview-view.preview-panel-drop-target::after,
+  .preview-split .preview-view.preview-panel-drop-target::after { content: 'Move panel here'; position: absolute;
+    inset: 0; z-index: 5; display: grid; place-items: center; border: 2px solid #70d8ff;
+    background: #70d8ff33; color: #fff; font: 700 14px system-ui, sans-serif;
+    pointer-events: none; }
   .preview-source-surface { position: absolute; inset: 0; display: grid; place-items: center;
     background: #10151e; }
   .preview-source-surface img, .preview-source-surface video { width: 100%; height: 100%;
@@ -268,7 +287,8 @@
   .preview-drop-top { inset: 0 0 50% 0; }
   .preview-drop-bottom { inset: 50% 0 0 0; }
   .preview-drop-center { inset: 0; }
-  body.minimal #preview-view-controls, body.screenplay-mode #preview-view-controls { display: none; }
+  body.minimal #preview-view-controls, body.screenplay-mode #preview-view-controls,
+  body.minimal .preview-panel-controls, body.screenplay-mode .preview-panel-controls { display: none; }
   #render-surface { position: absolute; inset: 0; overflow: hidden; }
   body.preview-pinned #render-surface { inset: auto; left: 50%; top: 50%;
     width: var(--pinned-width); height: var(--pinned-height);

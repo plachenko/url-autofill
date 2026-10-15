@@ -13,8 +13,11 @@
     </div>
   </div>
 </div>
-<div id="preview-view-controls" aria-label="Preview views">
-  <button id="preview-split-vertical" type="button" title="Split selected view side by side" aria-label="Split preview vertically">Vertical</button>
-  <button id="preview-split-horizontal" type="button" title="Split selected view top and bottom" aria-label="Split preview horizontally">Horizontal</button>
-  <button id="preview-close-view" type="button" title="Close selected extra view" aria-label="Close selected preview view" disabled>Close</button>
+<div id="preview-view-controls" aria-label="Create preview splits">
+  <button id="preview-split-vertical" type="button" title="Drag into a preview to split left and right; tap to split the selected preview" aria-label="Create a vertical preview split" aria-keyshortcuts="Enter Space">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="2"></rect><path d="M12 3v18"></path></svg>
+  </button>
+  <button id="preview-split-horizontal" type="button" title="Drag into a preview to split top and bottom; tap to split the selected preview" aria-label="Create a horizontal preview split" aria-keyshortcuts="Enter Space">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="2"></rect><path d="M2 12h20"></path></svg>
+  </button>
 </div>
