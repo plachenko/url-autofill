@@ -5,7 +5,6 @@
   import MemoryBar from "./MemoryBar.svelte";
   import ClipLibrary from "./ClipLibrary.svelte";
   import HelpPanel from "./HelpPanel.svelte";
-  import WebSocketPanel from "./WebSocketPanel.svelte";
 
   let teslaBrowser = $state(false);
   let teslaTheaterEnabled = $state(false);
@@ -34,6 +33,12 @@
     teslaTheaterPreference = event.currentTarget.checked;
     teslaTheaterEnabled = teslaBrowser || teslaTheaterPreference;
     window.dispatchEvent(new Event(teslaTheaterPreferenceEvent));
+  }
+  function openWebSocketImport() {
+    if (document.body.classList.contains('render-focus'))
+      document.getElementById('timeline-toggle')?.click();
+    document.getElementById('timeline-import-tab')?.click();
+    document.getElementById('menu-close')?.click();
   }
 </script>
 <div id="drawer-backdrop" hidden></div>
@@ -66,6 +71,7 @@
   <label for="text">You said</label>
   <textarea id="text" placeholder="Your URL can fill this for you"></textarea>
   <ClipLibrary />
+  <button type="button" onclick={openWebSocketImport}>Open WebSocket import</button>
   <div class="drawer-timeline-actions" aria-label="Timeline actions">
     <button id="add-track" type="button">Add track</button>
     <button id="delete-tracks" type="button" disabled>Delete tracks</button>
@@ -74,7 +80,6 @@
   </div>
   <label for="reply">Assistant reply</label>
   <textarea id="reply" placeholder="Your URL can fill the assistant reply"></textarea>
-  <WebSocketPanel />
   <div class="buttons" aria-label="Manual actions">
     <button type="button" data-action="render">Run Render</button>
     <button type="button" data-action="clear">Run Clear</button>

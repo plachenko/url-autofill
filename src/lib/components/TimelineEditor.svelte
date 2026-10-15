@@ -1,6 +1,14 @@
 <script>
   import TimelineControls from "./TimelineControls.svelte";
+  import WebSocketPanel from "./WebSocketPanel.svelte";
   let clipsOpen = false;
+  let clipSection = 'saved';
+  function switchClipSection(event) {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    clipSection = clipSection === 'saved' ? 'import' : 'saved';
+    document.getElementById(clipSection === 'saved' ? 'timeline-saved-tab' : 'timeline-import-tab')?.focus();
+  }
 </script>
 
 <section id="compositor" aria-labelledby="compositor-title">
@@ -33,9 +41,20 @@
       <button id="timeline-clips-tab" type="button" aria-controls="timeline-clips-panel"
         aria-expanded={clipsOpen} aria-pressed={clipsOpen} onclick={() => clipsOpen = !clipsOpen}>Clips</button>
     </div>
-    <aside id="timeline-clips-panel" aria-label="Saved clips" hidden={!clipsOpen}>
-      <div id="timeline-clips-list"></div>
-      <p id="timeline-clips-status" role="status" aria-live="polite"></p>
+    <aside id="timeline-clips-panel" class:is-importing={clipSection === 'import'} aria-label="Clips" hidden={!clipsOpen}>
+      <div class="clip-panel-tabs" role="tablist" aria-label="Clip panel" tabindex="-1" onkeydown={switchClipSection}>
+        <button id="timeline-saved-tab" type="button" role="tab" aria-controls="timeline-saved-content"
+          aria-selected={clipSection === 'saved'} onclick={() => clipSection = 'saved'}>Saved</button>
+        <button id="timeline-import-tab" type="button" role="tab" aria-controls="timeline-import-content"
+          aria-selected={clipSection === 'import'} onclick={() => { clipsOpen = true; clipSection = 'import'; }}>Import</button>
+      </div>
+      <div id="timeline-saved-content" role="tabpanel" aria-labelledby="timeline-saved-tab" hidden={clipSection !== 'saved'}>
+        <div id="timeline-clips-list"></div>
+        <p id="timeline-clips-status" role="status" aria-live="polite"></p>
+      </div>
+      <div id="timeline-import-content" role="tabpanel" aria-labelledby="timeline-import-tab" hidden={clipSection !== 'import'}>
+        <WebSocketPanel />
+      </div>
     </aside>
     <div id="track-list" aria-label="Composition tracks">
       <div id="track-content"></div>

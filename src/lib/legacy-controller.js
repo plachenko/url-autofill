@@ -2720,6 +2720,10 @@ import { createPreviewSplits } from './preview-splits.js';
         timelineClipsList.textContent = 'Clip storage is unavailable.';
       }
     }
+    document.addEventListener('urlAutofill:clip-saved', event => {
+      refreshClipList();
+      clipMessage(`Saved ${event.detail.id} as a clip.`);
+    });
     let pastedTimelineImage = null;
     timelineImageSource.addEventListener('paste', event => {
       const image = Array.from(event.clipboardData?.files || [])
@@ -2982,15 +2986,16 @@ import { createPreviewSplits } from './preview-splits.js';
       loadMemory();
       const params = compactParams();
       if (params.has('ws') || params.has('wsText')) {
-        const panel = document.getElementById('websocket-panel');
-        if (panel) {
-          setDrawerOpen(true);
+        if (document.body.classList.contains('render-focus')) timelineToggle.click();
+        document.getElementById('timeline-import-tab')?.click();
+        window.requestAnimationFrame(() => {
+          const panel = document.getElementById('websocket-panel');
+          if (!panel) return;
           panel.classList.remove('url-highlight');
           void panel.offsetWidth;
           panel.classList.add('url-highlight');
           panel.focus({ preventScroll: true });
-          drawer.scrollTop += panel.getBoundingClientRect().top - drawer.getBoundingClientRect().top - 12;
-        }
+        });
       }
       const requestedMode = (params.get('m') || '').toLowerCase();
       const mode = requestedMode === 'e' || requestedMode === 'editor' ? 'editor' :

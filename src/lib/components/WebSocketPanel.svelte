@@ -4,6 +4,7 @@
   import { websocketImageDropEvent } from '../websocket-image-drag.js';
   import { createFileReceiver } from '../websocket-files.js';
   import { loadLatestWebSocketFile, saveLatestWebSocketFile } from '../received-media.js';
+  import { mediaStorageKey, storeReceivedMedia, storeWholeMedia, validMediaId, validMime } from '../media-store.js';
   import { renderProgressMessage, renderTimeLeft, updateRenderTimeEstimate } from '../websocket-render.js';
   import { favoriteServerUrl, loadWebsocketFavorites, saveWebsocketFavorites, websocketServerUrl } from '../websocket-favorites.js';
 
@@ -28,6 +29,11 @@
   let filePreviewError = '';
   let fileRetentionError = '';
   let fileGeneration = 0;
+  let saveClipId = '';
+  let imageSeconds = 3;
+  let savingClip = false;
+  let saveClipStatus = '';
+  let saveClipError = false;
   let renderProgress = null;
   let renderTiming = null;
   let renderClock = Date.now();
@@ -165,6 +171,7 @@
     imageError = '';
     receivedFile = { ...file, endpoint, restored, url: URL.createObjectURL(file.blob) };
     filePreviewError = '';
+    saveClipStatus = '';
     returnText = `${restored ? 'Previously received' : 'Received'} ${file.name} (${file.bytes.toLocaleString()} bytes). ${restored ? 'Saved in this browser.' : 'SHA-256 verified.'}`;
     returnIsFile = true;
   }
@@ -189,8 +196,39 @@
     imageSrc = '';
     imageError = '';
     imageDropStatus = '';
+    saveClipStatus = '';
     try { imageSrc = websocketImageDataUrl(returnText); }
     catch (error) { imageError = error.message || 'Could not render the image.'; }
+  }
+
+  async function saveAsClip(event) {
+    event.preventDefault();
+    if (savingClip) return;
+    savingClip = true;
+    saveClipError = false;
+    saveClipStatus = '';
+    try {
+      const seconds = Number(imageSeconds);
+      if (!Number.isFinite(seconds) || seconds < .1 || seconds > 3600)
+        throw new Error('Image seconds must be between 0.1 and 3600.');
+      const entered = saveClipId.trim();
+      const base = `clip-${Date.now()}`;
+      let id = entered || base;
+      if (!validMediaId(id)) throw new Error('Clip ID must use 1–64 letters, numbers, _ or -.');
+      for (let suffix = 1; !entered &&
+          window.localStorage.getItem(`${mediaStorageKey(id)}.meta`) !== null; suffix++)
+        id = `${base}-${suffix}`;
+      if (imageSrc) storeWholeMedia(id, imageSrc, seconds);
+      else if (receivedFile && validMime(receivedFile.mime))
+        await storeReceivedMedia(id, receivedFile.blob, seconds);
+      else throw new Error('Receive an image or video before saving a clip.');
+      saveClipStatus = `Saved ${id} as a clip. Open Saved to use it.`;
+      saveClipId = '';
+      document.dispatchEvent(new CustomEvent('urlAutofill:clip-saved', { detail: { id } }));
+    } catch (error) {
+      saveClipError = true;
+      saveClipStatus = error.message || 'Could not save the clip.';
+    } finally { savingClip = false; }
   }
 
   function toggleFavorite() {
@@ -367,5 +405,18 @@
     <img class="websocket-image" src={imageSrc} alt="WebSocket server reply" draggable="false" onpointerdown={startImageDrag} onerror={() => { imageSrc = ''; imageError = 'The browser could not display this image.'; }}>
     <p class="websocket-image-hint">Drag this image onto a timeline track.</p>
     {#if imageDropStatus}<p class:websocket-image-error={imageDropError} role="status">{imageDropStatus}</p>{/if}
+  {/if}
+  {#if imageSrc || (receivedFile && validMime(receivedFile.mime))}
+    <form class="websocket-save-clip" onsubmit={saveAsClip}>
+      <label for="websocket-clip-id">Clip ID</label>
+      <input id="websocket-clip-id" type="text" maxlength="64" pattern="[A-Za-z0-9_-]+"
+        bind:value={saveClipId} placeholder="Clip ID (optional)">
+      {#if imageSrc || receivedFile?.mime.startsWith('image/')}
+        <label for="websocket-image-seconds">Image seconds</label>
+        <input id="websocket-image-seconds" type="number" min="0.1" max="3600" step="0.1" bind:value={imageSeconds}>
+      {/if}
+      <button type="submit" disabled={savingClip}>{savingClip ? 'Saving…' : 'Save as clip'}</button>
+      {#if saveClipStatus}<p class:websocket-image-error={saveClipError} role="status">{saveClipStatus}</p>{/if}
+    </form>
   {/if}
 </section>

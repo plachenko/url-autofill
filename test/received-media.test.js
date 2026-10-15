@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clearReceivedMedia, exportReceivedMedia, importReceivedMedia,
   loadLatestWebSocketFile, saveLatestWebSocketFile } from '../src/lib/received-media.js';
+import { loadMedia, storeReceivedMedia } from '../src/lib/media-store.js';
 
 test('legacy session files work without IndexedDB assets', async () => {
   const backup = { format: 'url-autofill-session', version: 1,
@@ -19,9 +20,10 @@ test('rejects invalid sessions and missing or malformed received assets before w
   assert.equal(JSON.parse(backup.entries['urlAutofill.media.v1.clip.meta']).blobId, 'id');
 });
 
-test('the latest verified WebSocket file survives a reconnect to the same server', async () => {
+test('a verified WebSocket file survives reconnect and can be saved as a clip', async () => {
   const values = new Map();
   const original = globalThis.indexedDB;
+  const originalWindow = globalThis.window;
   globalThis.indexedDB = { open() {
     const request = { result: { transaction() {
       const tx = { objectStore() { return {
@@ -39,6 +41,12 @@ test('the latest verified WebSocket file survives a reconnect to the same server
     queueMicrotask(() => request.onsuccess());
     return request;
   } };
+  const storage = new Map();
+  globalThis.window = { localStorage: {
+    getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: key => storage.delete(key)
+  } };
   try {
     const blob = new Blob(['video'], { type: 'video/mp4' });
     const file = { name: 'render.mp4', mime: 'video/mp4', bytes: blob.size, blob };
@@ -47,5 +55,13 @@ test('the latest verified WebSocket file survives a reconnect to the same server
     assert.equal(await loadLatestWebSocketFile('wss://other.example'), null);
     await clearReceivedMedia();
     assert.equal(await loadLatestWebSocketFile('wss://blender.example'), null);
-  } finally { globalThis.indexedDB = original; }
+    assert.match(await storeReceivedMedia('imported', blob, 3), /Saved imported/);
+    const clip = loadMedia('imported');
+    assert.equal(clip.type, 'video');
+    assert.match(clip.src, /^blob:/);
+    await clearReceivedMedia();
+  } finally {
+    globalThis.indexedDB = original;
+    globalThis.window = originalWindow;
+  }
 });
