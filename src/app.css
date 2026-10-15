@@ -484,6 +484,25 @@
   .pointer-overlay-hint { position: absolute; top: 8px; left: 8px; pointer-events: none;
     padding: 4px 8px; border-radius: 5px; background: #10151edb; color: #fff;
     font: 13px system-ui, sans-serif; }
+  .pointer-overlay-settings { flex: 0 1 auto; max-height: min(38vh, 320px); overflow: auto;
+    margin-top: 8px; padding: 8px; border: 1px solid #7085a1; border-radius: 8px;
+    background: #101b2aed; color: #fff; font: 13px/1.35 system-ui, sans-serif; }
+  .pointer-overlay-settings p { margin: 6px 0; }
+  .pointer-overlay-settings .websocket-image-error, .pointer-overlay-settings [role="alert"] { color: #ffb4b4; }
+  .pointer-scene-heading { display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 6px; }
+  .pointer-scene-row, .pointer-scene-size { display: flex; align-items: end; flex-wrap: wrap; gap: 6px; }
+  .pointer-overlay-settings label { margin: 0; font-size: 12px; }
+  .pointer-scene-row select { flex: 1 1 180px; min-width: 0; max-width: 100%; }
+  .pointer-overlay-settings select, .pointer-overlay-settings input { height: 36px; padding: 4px 6px;
+    border: 1px solid #7085a1; border-radius: 5px; background: #182130; color: #fff;
+    font: 13px system-ui, sans-serif; }
+  .pointer-overlay-settings button { min-height: 36px; padding: 4px 8px; font-size: 12px; }
+  .pointer-overlay-settings button:disabled, .pointer-overlay-settings select:disabled,
+  .pointer-overlay-settings input:disabled { opacity: .55; cursor: default; }
+  .pointer-scene-size { margin-top: 8px; }
+  .pointer-scene-size input { width: 88px; }
+  .pointer-scene-summary { color: #b8c8e0; overflow-wrap: anywhere; }
   .pointer-overlay-planes { display: flex; justify-content: center; gap: 8px; padding-top: 8px; }
   .pointer-overlay-planes button { min-width: 64px; min-height: 48px; padding: 5px 12px; }
   .pointer-overlay-planes button[aria-pressed="true"] { border-color: #70d8ff; background: #396eaf; }
