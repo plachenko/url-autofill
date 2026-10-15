@@ -39,8 +39,8 @@
     <p id="timeline-image-status" role="status" aria-live="polite" hidden></p>
   </details>
   <div id="timeline-workspace">
-    <div id="timeline-gutter-rail">
-      <aside id="timeline-clips-panel" class:is-importing={clipSection !== 'saved'} aria-label="Clips" hidden={!clipsOpen}>
+    <div id="timeline-gutter-rail" class:is-open={clipsOpen} class:is-importing={clipSection !== 'saved'}>
+      <aside id="timeline-clips-panel" aria-label="Clips" hidden={!clipsOpen}>
         <div class="clip-panel-tabs" role="tablist" aria-label="Clip panel" tabindex="-1" onkeydown={switchClipSection}>
           <button id="timeline-saved-tab" type="button" role="tab" aria-controls="timeline-saved-content"
             aria-selected={clipSection === 'saved'} onclick={() => clipSection = 'saved'}>Saved</button>
