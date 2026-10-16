@@ -159,3 +159,67 @@ test('acknowledged revisions block new commands until the matching catalog arriv
   assert.equal(h.session.applySize(), true);
   assert.equal(h.commands.at(-1).revision, 3);
 });
+
+test('move recording sends frame spacing and can be stopped after Blender reports it active', () => {
+  const h = harness();
+  h.session.connect();
+  h.session.receive(catalog(2, { capabilities: [...catalog().capabilities, 'pointer_record_move'] }));
+  h.session.setRecordMode('move');
+  h.session.setFrameStep('0');
+  assert.equal(h.session.startAutoKeyframe(), false);
+  assert.match(h.session.snapshot().error, /frame spacing/);
+  h.session.setFrameStep('4');
+  assert.equal(h.session.startAutoKeyframe(), true);
+  assert.deepEqual(h.commands.at(-1), { type: 'pointer_record_start', request_id: 'record-1',
+    scene_id: 'scene-1', revision: 2, frame_step: 4, mode: 'move' });
+  h.session.receive({ type: 'pointer_record_start_result', request_id: 'record-1', ok: true, revision: 3 });
+  h.session.receive(catalog(3, { capabilities: [...catalog().capabilities, 'pointer_record_move'],
+    pointer: { ...catalog().pointer, recording: true, record_mode: 'move' } }));
+  assert.equal(h.session.stopAutoKeyframe(), true);
+  assert.deepEqual(h.commands.at(-1), { type: 'pointer_record_stop', request_id: 'record-2',
+    scene_id: 'scene-1', revision: 3 });
+  h.session.receive({ type: 'pointer_record_stop_result', request_id: 'record-2', ok: true, revision: 4 });
+  assert.equal(h.session.snapshot().pending, null);
+});
+
+test('pointer-down auto keyframes and timeline seek use the advertised scene', () => {
+  const h = harness();
+  const capabilities = [...catalog().capabilities, 'pointer_record_move', 'pointer_record_down', 'pointer_timeline'];
+  h.session.connect();
+  h.session.receive(catalog(2, { capabilities,
+    timeline: { start: 1, end: 40, current: 10, keyframes: [10, 20] } }));
+  h.session.setFrameStep('5');
+  assert.equal(h.session.startAutoKeyframe(), true);
+  assert.deepEqual(h.commands.at(-1), { type: 'pointer_record_start', request_id: 'record-1',
+    scene_id: 'scene-1', revision: 2, frame_step: 5, mode: 'down' });
+  h.session.receive({ type: 'pointer_record_start_result', request_id: 'record-1', ok: true, revision: 3 });
+  h.session.receive(catalog(3, { capabilities, pointer: { ...catalog().pointer, recording: true, record_mode: 'down' } }));
+  assert.equal(h.session.seekFrame(20), false, 'scrubbing is locked while recording');
+  assert.equal(h.session.stopAutoKeyframe(), true);
+  h.session.receive({ type: 'pointer_record_stop_result', request_id: 'record-2', ok: true, revision: 4 });
+  h.session.receive(catalog(4, { capabilities }));
+  assert.equal(h.session.seekFrame(20), true);
+  assert.deepEqual(h.commands.at(-1), { type: 'pointer_frame_set', request_id: 'frame-3',
+    scene_id: 'scene-1', revision: 4, frame: 20 });
+  assert.equal(h.session.seekFrame(21), false, 'only one timeline command may be pending');
+  h.session.receive({ type: 'pointer_frame_set_result', request_id: 'frame-3', ok: true, revision: 5 });
+  assert.equal(h.session.snapshot().pending, null);
+});
+
+test('pointer-up auto keyframes require capability and send release mode', () => {
+  const h = harness();
+  h.session.connect();
+  h.session.receive(catalog(2, { capabilities: [...catalog().capabilities, 'pointer_record_move'] }));
+  h.session.setRecordMode('up');
+  assert.equal(h.session.startAutoKeyframe(), false);
+  h.session.receive(catalog(3, { capabilities: [...catalog().capabilities, 'pointer_record_move', 'pointer_record_up'] }));
+  h.session.setRecordMode('up');
+  h.session.setFrameStep('3');
+  assert.equal(h.session.startAutoKeyframe(), true);
+  assert.deepEqual(h.commands.at(-1), { type: 'pointer_record_start', request_id: 'record-1',
+    scene_id: 'scene-1', revision: 3, frame_step: 3, mode: 'up' });
+  h.session.receive({ type: 'pointer_record_start_result', request_id: 'record-1', ok: true, revision: 4 });
+  h.session.receive(catalog(4, { capabilities: [...catalog().capabilities, 'pointer_record_move', 'pointer_record_up'],
+    pointer: { ...catalog().pointer, recording: true, record_mode: 'up' } }));
+  assert.equal(h.session.stopAutoKeyframe(), true);
+});

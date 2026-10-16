@@ -1000,6 +1000,7 @@ import { createPreviewSplits } from './preview-splits.js';
     autoExpandTrackButton.setAttribute('aria-pressed', String(autoExpandTrack));
     autoExpandTrackButton.addEventListener('click', () => {
       autoExpandTrack = !autoExpandTrack;
+      suppressedAutoExpandClipRefs.clear();
       autoExpandTrackButton.setAttribute('aria-pressed', String(autoExpandTrack));
       try { window.localStorage.setItem(autoExpandTrackKey, autoExpandTrack ? '1' : '0'); }
       catch (error) { /* Automatic expansion still works without browser storage. */ }
@@ -1135,6 +1136,12 @@ import { createPreviewSplits } from './preview-splits.js';
     let timelineGestureController = null;
     let visibleItem = null;
     let autoExpandedTrackRow = null;
+    let draggingCollapsedClip = false;
+    const suppressedAutoExpandClipRefs = new Set();
+    function shouldAutoExpandTrack(item) {
+      return autoExpandTrack && !draggingCollapsedClip && item &&
+        !suppressedAutoExpandClipRefs.has(item.clipRef);
+    }
     const previewSplits = createPreviewSplits({
       layout: document.getElementById('preview-layout'),
       verticalButton: document.getElementById('preview-split-vertical'),
@@ -1379,7 +1386,7 @@ import { createPreviewSplits } from './preview-splits.js';
     }
     function syncCompositionPreview(seek = false) {
       const active = visibleCompositionItem(compositionItems, session.playheadSeconds);
-      const expandedRow = autoExpandTrack && active
+      const expandedRow = shouldAutoExpandTrack(active)
         ? trackContent.querySelector(`.track-row[data-track="${active.track}"]`) : null;
       if (autoExpandedTrackRow !== expandedRow) {
         autoExpandedTrackRow?.classList.remove('auto-expanded-track');
@@ -1466,7 +1473,7 @@ import { createPreviewSplits } from './preview-splits.js';
             syncCompositionPreview();
           });
       }
-      const markerTile = active && (selectedTracks.has(tracks[active.track]) || autoExpandTrack
+      const markerTile = active && (selectedTracks.has(tracks[active.track]) || shouldAutoExpandTrack(active)
         ? active.tile : active.compactTile);
       if (markerTile) {
         markerTile.append(renderFrameMarker);
@@ -1502,13 +1509,16 @@ import { createPreviewSplits } from './preview-splits.js';
       saveSession();
     }
     function setCompositionTime(seconds, seek = true) {
-      session.playheadSeconds = Math.max(0, Math.min(compositionDuration, seconds));
+      const nextSeconds = Math.max(0, Math.min(compositionDuration, seconds));
+      if (nextSeconds !== session.playheadSeconds) suppressedAutoExpandClipRefs.clear();
+      session.playheadSeconds = nextSeconds;
       if (compositionPlaying) compositionStarted = performance.now() - session.playheadSeconds * 1000;
       syncCompositionPreview(seek);
       saveSession(true);
     }
     function compositionTick(now) {
       if (!compositionPlaying) return;
+      suppressedAutoExpandClipRefs.clear();
       session.playheadSeconds = Math.min(compositionDuration, (now - compositionStarted) / 1000);
       if (session.playheadSeconds >= compositionDuration) stopComposition();
       syncCompositionPreview();
@@ -1709,8 +1719,8 @@ import { createPreviewSplits } from './preview-splits.js';
         compositionItems.push(entry);
         compositionDuration = Math.max(compositionDuration, entry.end);
       }));
-      const openingTrack = autoExpandTrack
-        ? visibleCompositionItem(compositionItems, session.playheadSeconds)?.track : null;
+      const openingItem = visibleCompositionItem(compositionItems, session.playheadSeconds);
+      const openingTrack = shouldAutoExpandTrack(openingItem) ? openingItem.track : null;
       const animatedRows = [];
       const hadComposition = document.body.classList.contains('has-composition');
       document.body.classList.toggle('has-composition', compositionItems.length > 0 || Boolean(missingClipError));
@@ -1905,7 +1915,7 @@ import { createPreviewSplits } from './preview-splits.js';
         for (const entry of compositionItems) {
           if (!entry.tile) continue;
           const visibleTile = selectedTracks.has(tracks[entry.track]) ||
-            (autoExpandTrack && visibleItem?.track === entry.track)
+            (shouldAutoExpandTrack(visibleItem) && visibleItem.track === entry.track)
             ? entry.tile : entry.compactTile;
           const bounds = visibleTile.getBoundingClientRect();
           if (bounds.left - contentBounds.left < right && bounds.right - contentBounds.left > left &&
@@ -2151,9 +2161,15 @@ import { createPreviewSplits } from './preview-splits.js';
           compactTile.classList.toggle('selected', selectedClips.has(clipRef));
           compactTile.tabIndex = 0;
           compactTile.setAttribute('role', 'button');
-          compactTile.setAttribute('aria-label', `Select ${id} on track ${trackIndex + 1}`);
+          compactTile.setAttribute('aria-label', `Select or move ${id} on track ${trackIndex + 1}; arrow keys move`);
           compactTile.setAttribute('aria-pressed', String(selectedClips.has(clipRef)));
+          let suppressCompactClick = false;
+          const ignoreNextCompactClick = () => {
+            suppressCompactClick = true;
+            window.setTimeout(() => { suppressCompactClick = false; }, 500);
+          };
           const selectCompactClip = () => {
+            if (suppressCompactClick) { suppressCompactClick = false; return; }
             if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
             else selectedClips.add(clipRef);
             syncSelection();
@@ -2161,6 +2177,10 @@ import { createPreviewSplits } from './preview-splits.js';
           };
           compactTile.addEventListener('click', selectCompactClip);
           compactTile.addEventListener('keydown', event => {
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+              moveClipWithKeyboard(event);
+              return;
+            }
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
             selectCompactClip();
@@ -2238,7 +2258,7 @@ import { createPreviewSplits } from './preview-splits.js';
           grip.tabIndex = 0;
           grip.setAttribute('role', 'button');
           grip.setAttribute('aria-label', `Move ${id}; arrow keys change time or track`);
-          grip.addEventListener('keydown', event => {
+          const moveClipWithKeyboard = event => {
             const moving = selectedClips.has(clipRef) ?
               compositionItems.filter(value => selectedClips.has(value.clipRef)) : [entry];
             let deltaStart = 0;
@@ -2262,25 +2282,35 @@ import { createPreviewSplits } from './preview-splits.js';
             }
             tracks.forEach(value => value.sort((a, b) => a.start - b.start));
             activeTrack = trackIndex + deltaTrack;
-            pendingClipFocus = { id, start: roundTime(entry.start + deltaStart), track: activeTrack };
+            pendingClipFocus = { id, start: roundTime(entry.start + deltaStart),
+              track: activeTrack, compact: event.currentTarget === compactTile };
             saveTracks();
             void refreshCompositor();
-          });
+          };
+          grip.addEventListener('keydown', moveClipWithKeyboard);
           if (pendingClipFocus?.id === id && pendingClipFocus.start === clip.start &&
-              pendingClipFocus.track === trackIndex) focusGrip = grip;
-          grip.addEventListener('pointerdown', event => {
+              pendingClipFocus.track === trackIndex)
+            focusGrip = pendingClipFocus.compact ? compactTile : grip;
+          const startClipDrag = event => {
             if (event.button !== 0 || timelineLocked() ||
                 (event.pointerType === 'touch' && !event.isPrimary)) return;
+            const dragHandle = event.currentTarget;
+            const compactDrag = dragHandle === compactTile;
             if (event.isPrimary) suppressDragForPinch = false;
             event.preventDefault();
             if (event.ctrlKey || event.metaKey || event.shiftKey) {
+              if (compactDrag) ignoreNextCompactClick();
               if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
               else selectedClips.add(clipRef);
               syncSelection();
               return;
             }
             stopComposition();
-            grip.setPointerCapture(event.pointerId);
+            dragHandle.setPointerCapture(event.pointerId);
+            if (compactDrag) {
+              draggingCollapsedClip = true;
+              syncCompositionPreview(true);
+            }
             const moving = (selectedClips.has(clipRef) ?
               compositionItems.filter(value => selectedClips.has(value.clipRef)) : [entry])
               .map(value => ({ entry: value, clipRef: value.clipRef,
@@ -2291,11 +2321,11 @@ import { createPreviewSplits } from './preview-splits.js';
             const maxTrack = Math.max(...moving.map(value => value.track));
             const x = event.clientX;
             const y = event.clientY;
-            const bounds = tile.getBoundingClientRect();
+            const bounds = dragHandle.getBoundingClientRect();
             const grabOffset = x - bounds.left;
-            const ghost = tile.cloneNode(true);
+            const ghost = (compactDrag ? compactTile : tile).cloneNode(true);
             ghost.querySelector('#render-frame')?.remove();
-            if (item.type === 'image') {
+            if (!compactDrag && item.type === 'image') {
               const ghostCanvas = ghost.querySelector('canvas');
               ghostCanvas?.getContext('2d')?.drawImage(thumbnail, 0, 0);
             }
@@ -2303,11 +2333,22 @@ import { createPreviewSplits } from './preview-splits.js';
             ghost.style.left = `${bounds.left}px`;
             ghost.style.top = `${bounds.top}px`;
             ghost.style.width = `${bounds.width}px`;
+            ghost.style.height = `${bounds.height}px`;
+            ghost.style.bottom = 'auto';
             document.body.append(ghost);
             tile.classList.add('dragging');
+            if (compactDrag) compactTile.classList.add('dragging');
             let liveStart = clip.start;
             let liveTrack = trackIndex;
             let moved = false;
+            let highlightedRow = null;
+            const highlightTrack = lane => {
+              const row = lane?.closest('.track-row[data-track]') || null;
+              if (row === highlightedRow) return;
+              highlightedRow?.classList.remove('clip-move-target');
+              highlightedRow = row;
+              highlightedRow?.classList.add('clip-move-target');
+            };
             const laneAt = clientY => Array.from(trackContent.querySelectorAll('.track-lane'))
               .find(candidate => {
                 const rect = candidate.getBoundingClientRect();
@@ -2320,7 +2361,7 @@ import { createPreviewSplits } from './preview-splits.js';
               if (!moved) return;
               ghost.style.transform = `translate(${moveEvent.clientX - x}px, ${moveEvent.clientY - y}px)`;
               const targetLane = laneAt(moveEvent.clientY);
-              if (!targetLane) return;
+              if (!targetLane) { highlightTrack(null); return; }
               liveTrack = Math.max(trackIndex - minTrack,
                 Math.min(tracks.length - 1 - maxTrack + trackIndex, Number(targetLane.dataset.track)));
               const rawStart = (moveEvent.clientX - grabOffset -
@@ -2330,6 +2371,7 @@ import { createPreviewSplits } from './preview-splits.js';
               const deltaStart = liveStart - clip.start;
               const deltaTrack = liveTrack - trackIndex;
               const lanes = Array.from(trackContent.querySelectorAll('.track-lane'));
+              highlightTrack(lanes[liveTrack]);
               moving.forEach(value => {
                 const destination = lanes[value.track + deltaTrack];
                 const original = lanes[value.track];
@@ -2338,8 +2380,10 @@ import { createPreviewSplits } from './preview-splits.js';
                 value.entry.track = value.track + deltaTrack;
                 value.entry.tile.style.left = `${Math.round(value.entry.start * timelineScale)}px`;
                 positionCompactTile(value.entry.compactTile, value.entry.tile);
-                value.entry.tile.style.transform = `translateY(${destination.getBoundingClientRect().top -
-                  original.getBoundingClientRect().top}px)`;
+                const trackOffset = destination.getBoundingClientRect().top -
+                  original.getBoundingClientRect().top;
+                value.entry.tile.style.transform = `translateY(${trackOffset}px)`;
+                value.entry.compactTile.style.transform = `translateY(${trackOffset}px)`;
               });
               compositionDuration = Math.max(0, ...compositionItems.map(value => value.end));
               compositionScrubber.max = String(compositionDuration);
@@ -2352,17 +2396,34 @@ import { createPreviewSplits } from './preview-splits.js';
               syncCompositionPreview(true);
               compositorMessage(`${moving.length} clip${moving.length === 1 ? '' : 's'}: ${liveStart.toFixed(2)}s on track ${liveTrack + 1}`);
             };
-            const finish = endEvent => {
-              if (suppressDragForPinch) { cancel(); return; }
-              grip.removeEventListener('pointermove', move);
-              grip.removeEventListener('pointerup', finish);
-              grip.removeEventListener('pointercancel', cancel);
+            const cleanup = () => {
+              dragHandle.removeEventListener('pointermove', move);
+              dragHandle.removeEventListener('pointerup', finish);
+              dragHandle.removeEventListener('pointercancel', cancel);
               ghost.remove();
               tile.classList.remove('dragging');
-              if (!moved) return;
+              compactTile.classList.remove('dragging');
+              highlightTrack(null);
+            };
+            const finish = endEvent => {
+              if (suppressDragForPinch) { cancel(); return; }
+              cleanup();
+              if (!moved) {
+                if (compactDrag) {
+                  draggingCollapsedClip = false;
+                  syncCompositionPreview(true);
+                }
+                return;
+              }
+              if (compactDrag) ignoreNextCompactClick();
               const targetLane = laneAt(endEvent.clientY);
-              if (!targetLane) { void refreshCompositor(); return; }
+              if (!targetLane) {
+                draggingCollapsedClip = false;
+                void refreshCompositor();
+                return;
+              }
               move(endEvent);
+              highlightTrack(null);
               for (const value of moving) {
                 const sourceTrack = tracks[value.track];
                 sourceTrack.splice(sourceTrack.indexOf(value.clipRef), 1);
@@ -2373,21 +2434,24 @@ import { createPreviewSplits } from './preview-splits.js';
               }
               tracks.forEach(track => track.sort((a, b) => a.start - b.start));
               activeTrack = liveTrack;
+              if (compactDrag) {
+                moving.forEach(value => suppressedAutoExpandClipRefs.add(value.clipRef));
+                draggingCollapsedClip = false;
+              }
               saveTracks();
               void refreshCompositor();
             };
             const cancel = () => {
-              grip.removeEventListener('pointermove', move);
-              grip.removeEventListener('pointerup', finish);
-              grip.removeEventListener('pointercancel', cancel);
-              ghost.remove();
-              tile.classList.remove('dragging');
+              cleanup();
+              draggingCollapsedClip = false;
               void refreshCompositor();
             };
-            grip.addEventListener('pointermove', move);
-            grip.addEventListener('pointerup', finish);
-            grip.addEventListener('pointercancel', cancel);
-          });
+            dragHandle.addEventListener('pointermove', move);
+            dragHandle.addEventListener('pointerup', finish);
+            dragHandle.addEventListener('pointercancel', cancel);
+          };
+          grip.addEventListener('pointerdown', startClipDrag);
+          compactTile.addEventListener('pointerdown', startClipDrag);
           function makeTrimHandle(edge) {
             const handle = document.createElement('div');
             handle.className = `clip-trim ${edge}`;

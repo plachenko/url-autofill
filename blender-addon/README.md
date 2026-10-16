@@ -1,10 +1,10 @@
-# Render to WebSocket — Blender add-on 1.10.0
+# Render to WebSocket — Blender add-on 1.14.0
 
 Transfers completed Blender outputs in verified base64 chunks, replays the latest file after reconnect, and accepts pointer positions from URL Autofill to drive and record Empties.
 
 ## Install
 
-Run `python blender-addon/build.py` from the repository root. Install the resulting `blender-addon/render_to_websocket-1.10.0.zip` through Blender Preferences > Add-ons > Install from Disk. Restart Blender after replacing an already loaded version. Blender 4.2+ is targeted; integration tests use Blender 5.2.2.
+Run `python blender-addon/build.py` from the repository root. Install the resulting `blender-addon/render_to_websocket-1.14.0.zip` through Blender Preferences > Add-ons > Install from Disk. Restart Blender after replacing an already loaded version. Blender 4.2+ is targeted; integration tests use Blender 5.2.2.
 
 The vendored pure-Python websockets runtime needs no pip installation. Its BSD license is included in `render_to_websocket/vendor/websockets-17.2.dist-info/licenses/LICENSE`. Original add-on author: Denis Perchenko.
 
@@ -27,6 +27,10 @@ Each contact is separate by connection and pointer ID. The first uses the target
 
 A new take action is assigned to each driven object; the previous action is copied and retained as a separate action with a fake user, preserving its keys. Only location channels are recorded. Existing keys outside the take remain in the copied action. The record buttons do not delete earlier takes. Location-driven objects and NLA tweak mode are rejected. Changing the active scene or scene frame rate, disabling pointer control, loading a blend, starting playback/rendering, or disabling the server/add-on stops recording. Recording itself does not resume automatically after reload.
 
+The browser pointer overlay has an **Auto Keyframe** button. Choose **Pointer down** to insert a location key at each press, **Pointer up** to hold the object during a press and drag then place and key it at release, or **Pointer move** to key each changed pose sampled by Blender. Set **Frames between keyframes** to an integer from 1 to 1000. Each trigger advances Blender's timeline by that many frames; idle time adds no frames or keys. Press the button again to finish the take and disable live pointer control. The compact browser timeline shows Blender's frame range, current frame, and the target Empty's latest 512 location keyframes. Drag its slider to set Blender's current frame while recording is stopped. Pointer up requires add-on 1.13.0 or newer; the other controls require 1.12.0 or newer.
+
+**Axis lock** in the browser offers Free, X, Y, and Z. Choosing an axis moves the controlled Empty only along that axis within the active movement plane and preserves its other coordinates. An axis perpendicular to the plane is disabled. With **Use origin object rotation** enabled, X/Y/Z follow the origin's rotated local axes. Changing the lock ends the current pointer gesture. Axis lock requires add-on 1.14.0 or newer.
+
 Empties do not render themselves. Parent or constrain a visible object to the Empty to use its movement in a rendered animation. Clear Extra Pointer Empties preserves recorded extras, the selected target and origin.
 
 ## Render file replay and tunnels
@@ -46,7 +50,7 @@ blender --background --factory-startup --python-exit-code 1 --python test_replay
 blender --background --factory-startup --python-exit-code 1 --python test_recording_blender.py
 ```
 
-`test_recording_blender.py` verifies fractional fps, multi-touch takes, held poses, preserved actions, linear keys, frame range, save/reload and two actual rendered frames with the add-on disabled. `test_auto_recording_blender.py` is an optional isolated **interactive** timer integration test: run with `blender --factory-startup --python-exit-code 1 --python test_auto_recording_blender.py`. It writes a verification JSON and closes its own test instance when done. Use factory-startup, never an existing working scene.
+`test_recording_blender.py` verifies fractional fps, multi-touch takes, held poses, preserved actions, linear keys, frame range, save/reload and two actual rendered frames with the add-on disabled. `test_auto_recording_blender.py` is an optional isolated **interactive** timer integration test: run with `blender --factory-startup --python-exit-code 1 --python test_auto_recording_blender.py`. It writes a verification JSON and closes its own test instance when done. Use factory-startup, never an existing working scene. `python -m unittest blender-addon/test_move_recording.py` checks frame spacing and idle behavior without Blender.
 
 
 ## Scene-object discovery (1.10.0)
@@ -55,7 +59,7 @@ Blender advertises the active scene's object list as `scene_objects` version 1, 
 
 A browser can send `pointer_follow` with a unique request ID and the displayed scene ID/revision/object ID. The selected visible object follows the Empty: an existing compatible rig is preserved, otherwise an Empty is created at the object's bottom-center and the object is parented to it without changing its current world pose. Existing Empties may be used directly. An independent origin helper is created when needed. The optional boolean `enable` controls whether to enable pointer movement; omission preserves the current state. Stale selections, read-only objects, rendering and recording are rejected. Follow roots are not reused as extra-pointer controls or deleted by extra-pointer cleanup.
 
-The browser selector is a TODO, not yet a visible dropdown. Its full message schema, existing-connection event bridge, and UI checklist are documented in the repository `TODO.md`. Run `python -m unittest -v test_scene_objects.py` and `blender --background --factory-startup --python-exit-code 1 --python test_scene_objects_blender.py` to validate discovery, socket requests, pose preservation and real object movement.
+The browser Pointers overlay shows the scene object hierarchy. Expand a parent, select an editable object, then choose **Attach & enable**. Read-only objects remain visible with their disabled reason. Run `python -m unittest -v test_scene_objects.py` and `blender --background --factory-startup --python-exit-code 1 --python test_scene_objects_blender.py` to validate discovery, socket requests, pose preservation and real object movement.
 
 ### WebSocket plane dimensions and viewport bounds
 

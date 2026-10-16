@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Render to WebSocket",
     "author": "Denis Perchenko",
-    "version": (1, 10, 0),
+    "version": (1, 14, 0),
     "blender": (4, 2, 0),
     "location": "Edit > Preferences > Add-ons; Render menu > Send Last Render to WebSocket",
     "description": "Transfers completed render files as verified base64 chunks over WebSocket",
@@ -27,7 +27,7 @@ def _refresh_progress():
     return 0.25
 import re, glob, shutil, subprocess
 
-VERSION_STR = "Render to WebSocket v1.10.0"
+VERSION_STR = "Render to WebSocket v1.14.0"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _VENDOR = os.path.join(_HERE, "vendor")
@@ -97,21 +97,48 @@ def _scene_objects_tick():
         if scene is None or not SERVER.running:
             return .5
         rendering = bpy.app.is_job_running('RENDER')
-        SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering)
+        SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering, getattr(RECORDER, 'mode', None))
         for client, request in SERVER.object_requests.drain():
             try:
                 if bpy.app.is_job_running('RENDER'):
                     raise ValueError('Finish rendering before changing the followed object')
-                operation = SCENE_OBJECTS.set_plane if request.get('type') == 'pointer_plane_set' else SCENE_OBJECTS.follow
-                result = operation(scene, request, RECORDER.running)
-                SERVER.pointers.clear()
-                POINTER.reset()
+                kind = request.get('type')
+                if kind in {'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set'}:
+                    SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering, getattr(RECORDER, 'mode', None))
+                    if request['scene_id'] != SCENE_OBJECTS.scene_id:
+                        raise ValueError('Scene changed; refresh and try again')
+                    if kind == 'pointer_record_start':
+                        if bpy.context.screen and bpy.context.screen.is_animation_playing:
+                            raise ValueError('Stop timeline playback before recording')
+                        RECORDER.start(scene, mode=request['mode'], frame_step=request['frame_step'])
+                    elif kind == 'pointer_record_stop':
+                        if not RECORDER.running or RECORDER.mode not in ('move', 'down', 'up'):
+                            raise ValueError('No browser auto keyframe recording is running')
+                        _pointer_tick()
+                        RECORDER.stop()
+                        SERVER.pointers.clear()
+                        POINTER.reset()
+                    else:
+                        if RECORDER.running:
+                            raise ValueError('Stop recording before moving the timeline')
+                        SERVER.pointers.clear()
+                        POINTER.reset()
+                        scene.frame_set(request['frame'])
+                    SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering, getattr(RECORDER, 'mode', None))
+                    result = dict(type=kind + '_result', request_id=request['request_id'], ok=True,
+                                  scene_id=SCENE_OBJECTS.scene_id, revision=SCENE_OBJECTS.revision,
+                                  message=RECORDER.status if kind != 'pointer_frame_set' else f'Frame {scene.frame_current}')
+                else:
+                    operation = SCENE_OBJECTS.set_plane if kind == 'pointer_plane_set' else SCENE_OBJECTS.follow
+                    result = operation(scene, request, RECORDER.running, getattr(RECORDER, 'mode', None))
+                    SERVER.pointers.clear()
+                    POINTER.reset()
             except Exception as exc:
                 result = dict(type=request.get('type', 'pointer_follow') + '_result', request_id=request['request_id'], ok=False,
                               message=str(exc), scene_id=SCENE_OBJECTS.scene_id, revision=SCENE_OBJECTS.revision)
-            SERVER.publish_scene_objects(SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering))
+            SERVER.publish_scene_objects(SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering, getattr(RECORDER, 'mode', None)))
             SERVER.reply_scene_object(client, result)
-        SERVER.publish_scene_objects(SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering))
+        SERVER.publish_scene_objects(SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering, getattr(RECORDER, 'mode', None)))
     except Exception as exc:
         _log('Scene object advertisement failed:', str(exc))
     return .5
@@ -134,8 +161,9 @@ def _pointer_tick():
                 RECORDER.stop(reason='Recording stopped: timeline playback started')
             RECORDER.advance(scene)
             depsgraph = bpy.context.evaluated_depsgraph_get() if scene.rtws_pointer.enabled else None
-            POINTER.tick(SERVER.pointers, scene, depsgraph)
-            RECORDER.capture(POINTER.driven)
+            POINTER.tick(SERVER.pointers, scene, depsgraph,
+                         release_only=RECORDER.running and RECORDER.mode == 'up')
+            RECORDER.capture(POINTER.driven, POINTER.down_poses, POINTER.up_poses)
             if POINTER.moved:
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:

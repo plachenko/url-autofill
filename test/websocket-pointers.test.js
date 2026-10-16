@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pointerPosition, pointerPositionsMessage } from '../src/lib/websocket-pointers.js';
+import { pointerPosition, touchPosition, pointerPositionsMessage } from '../src/lib/websocket-pointers.js';
 
 test('pointer positions are normalized to the touch surface', () => {
   const bounds = { left: 10, top: 20, width: 200, height: 100 };
@@ -12,12 +12,20 @@ test('pointer positions are normalized to the touch surface', () => {
   { id: 8, x: 0, y: 1, kind: 'pen', pressure: 1 });
 });
 
+test('touch contacts use stable protocol ids and normalized coordinates', () => {
+  const bounds = { left: 10, top: 20, width: 200, height: 100 };
+  assert.deepEqual(touchPosition({ identifier: 3, clientX: 110, clientY: 45, force: .7 }, bounds, 1000000000),
+    { id: 1000000000, x: .5, y: .25, kind: 'touch', pressure: .7 });
+});
+
 test('multi-touch messages include every active contact and identify the changed one', () => {
   const first = { id: 5, x: .2, y: .3, kind: 'touch', pressure: .5 };
   const second = { id: 9, x: .8, y: .7, kind: 'touch', pressure: .5 };
   assert.deepEqual(pointerPositionsMessage('move', second, [second, first]), {
-    type: 'pointer_positions', phase: 'move', plane: 'z', changed: second, pointers: [first, second]
+    type: 'pointer_positions', phase: 'move', plane: 'z', axis_lock: null,
+    changed: second, pointers: [first, second]
   });
   assert.deepEqual(pointerPositionsMessage('up', first, [second]).pointers, [second]);
   assert.equal(pointerPositionsMessage('down', first, [first], 'x').plane, 'x');
+  assert.equal(pointerPositionsMessage('down', first, [first], 'z', 'x').axis_lock, 'x');
 });

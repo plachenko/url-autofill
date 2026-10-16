@@ -23,6 +23,7 @@ class PointerFrame:
     changed: Point | None
     pointers: tuple
     plane: str | None = None
+    axis_lock: str | None = None
 
 
 def _unit(value):
@@ -50,6 +51,9 @@ def parse_pointer_message(message):
     plane = message.get('plane')
     if plane is not None and plane not in ('x', 'y', 'z'):
         raise ValueError('Pointer plane must be x, y, or z')
+    axis_lock = message.get('axis_lock')
+    if axis_lock is not None and axis_lock not in ('x', 'y', 'z'):
+        raise ValueError('Pointer axis lock must be x, y, or z')
     phase = message['phase']
     if phase == 'reset':
         if message.get('changed') is not None or points:
@@ -63,7 +67,7 @@ def parse_pointer_message(message):
             raise ValueError('Ended or hovering pointer cannot remain an active contact')
         if phase == 'hover' and changed.kind != 'mouse':
             raise ValueError('Hover is a mouse position without an active contact')
-    return PointerFrame(phase, changed, points, plane)
+    return PointerFrame(phase, changed, points, plane, axis_lock)
 
 
 def resolve_plane(plane, fallback):
@@ -80,11 +84,19 @@ def plane_offset(x, y, plane, width, height):
     return {'XY': (u, v, 0), 'XZ': (u, 0, v), 'YZ': (0, u, v)}[plane]
 
 
+def constrain_to_axis(current, desired, direction):
+    """Keep the current position except for movement along a unit axis."""
+    distance = sum((desired[i] - current[i]) * direction[i] for i in range(3))
+    return tuple(current[i] + direction[i] * distance for i in range(3))
+
+
 class PointerInbox:
     def __init__(self):
         self._lock = threading.Lock()
         self._states = {}
         self._ends = {}
+        self._downs = {}
+        self._ups = {}
 
     def submit(self, client, message):
         frame = parse_pointer_message(message)
@@ -95,28 +107,57 @@ class PointerInbox:
             self._states[client] = frame
             if previous and previous.plane != frame.plane:
                 self._ends.pop(client, None)
+                self._downs.pop(client, None)
+                self._ups.pop(client, None)
             ends = self._ends.setdefault(client, {})
+            if frame.phase == 'down':
+                downs = self._downs.setdefault(client, {})
+                downs[frame.changed.id] = frame.changed
+                while len(downs) > MAX_CONTACTS:
+                    del downs[next(iter(downs))]
             for point in frame.pointers:
                 ends.pop(point.id, None)
             if frame.phase == 'up':
                 ends[frame.changed.id] = frame.changed
+                ups = self._ups.setdefault(client, [])
+                ups.append(frame.changed)
+                del ups[:-64]
                 while len(ends) > MAX_CONTACTS:
                     del ends[next(iter(ends))]
             elif frame.phase == 'reset':
                 ends.clear()
+                self._downs.pop(client, None)
+                self._ups.pop(client, None)
 
     def snapshot(self):
         with self._lock:
             states, ends = dict(self._states), {client: tuple(points.values()) for client, points in self._ends.items() if points}
             self._ends.clear()
+            self._downs.clear()
+            self._ups.clear()
             return states, ends
+
+    def snapshot_with_downs(self):
+        with self._lock:
+            states = dict(self._states)
+            ends = {client: tuple(points.values()) for client, points in self._ends.items() if points}
+            downs = {client: tuple(points.values()) for client, points in self._downs.items() if points}
+            ups = {client: tuple(points) for client, points in self._ups.items() if points}
+            self._ends.clear()
+            self._downs.clear()
+            self._ups.clear()
+            return states, ends, downs, ups
 
     def disconnect(self, client):
         with self._lock:
             self._states.pop(client, None)
             self._ends.pop(client, None)
+            self._downs.pop(client, None)
+            self._ups.pop(client, None)
 
     def clear(self):
         with self._lock:
             self._states.clear()
             self._ends.clear()
+            self._downs.clear()
+            self._ups.clear()

@@ -2,7 +2,7 @@
 import threading
 import bpy
 from mathutils import Vector
-from .pointers import plane_offset, resolve_plane
+from .pointers import constrain_to_axis, plane_offset, resolve_plane
 
 OWNED = 'rtws_pointer_generated'
 MAX_EMPTIES = 64
@@ -67,6 +67,9 @@ class PointerController:
         self.last_hover = None
         self.moved = False
         self.driven = {}
+        self.pressed = False
+        self.down_poses = []
+        self.up_poses = []
 
     def reset(self):
         self.bindings.clear()
@@ -75,6 +78,9 @@ class PointerController:
         self.last_hover = None
         self.moved = False
         self.driven = {}
+        self.pressed = False
+        self.down_poses = []
+        self.up_poses = []
 
     def _object(self, key, scene, settings):
         existing = self.bindings.get(key)
@@ -96,12 +102,14 @@ class PointerController:
         self.bindings[key] = obj
         return obj
 
-    def tick(self, inbox, scene, depsgraph=None):
+    def tick(self, inbox, scene, depsgraph=None, release_only=False):
         if threading.current_thread() is not threading.main_thread():
             raise RuntimeError('Pointer scene updates must run on Blender main thread')
         self.moved = False
         self.driven = {}
-        states, ended = inbox.snapshot()
+        self.down_poses = []
+        self.up_poses = []
+        states, ended, downs, ups = inbox.snapshot_with_downs()
         settings = scene.rtws_pointer
         signature = (scene.as_pointer(), settings.enabled,
             settings.origin.as_pointer() if settings.origin else 0,
@@ -110,6 +118,7 @@ class PointerController:
         if signature != self.signature:
             self.reset()
             self.signature = signature
+        self.pressed = bool(downs)
         if not settings.enabled:
             self.status = 'Pointer control disabled'
             return
@@ -138,15 +147,26 @@ class PointerController:
         limited = False
         def move(key, point):
             nonlocal limited
+            frame = states.get(key[0])
+            movement_plane = planes.get(key[0], settings.plane)
+            axis_lock = frame.axis_lock if frame else None
+            if axis_lock and axis_lock.upper() not in movement_plane:
+                return
             obj = self._object(key, scene, settings)
             if obj is None:
                 limited = True
                 return
             self.driven.setdefault(obj.as_pointer(), (obj, tuple(obj.location)))
-            offset = Vector(plane_offset(point.x, point.y, planes.get(key[0], settings.plane), settings.width, settings.height))
+            offset = Vector(plane_offset(point.x, point.y, movement_plane, settings.width, settings.height))
             if settings.local_axes:
                 offset = origin.to_quaternion() @ offset
             position = origin.translation + offset
+            if axis_lock:
+                axis_vector = Vector(tuple(float(name == axis_lock) for name in 'xyz'))
+                if settings.local_axes:
+                    axis_vector = origin.to_quaternion() @ axis_vector
+                current = obj.matrix_world.translation
+                position = Vector(constrain_to_axis(current, position, axis_vector))
             if (obj.matrix_world.translation - position).length > 1e-8:
                 matrix = obj.matrix_world.copy()
                 matrix.translation = position
@@ -156,6 +176,26 @@ class PointerController:
                 key = 'rtws_pointer_' + name
                 if obj.get(key) != value:
                     obj[key] = value
+        if release_only:
+            for client, points in ups.items():
+                for point in points:
+                    key = (client, point.id)
+                    move(key, point)
+                    obj = self.bindings.get(key)
+                    if obj and obj.as_pointer() in self.driven:
+                        self.up_poses.append((obj, self.driven[obj.as_pointer()][1], tuple(obj.location)))
+            self.bindings = {key: obj for key, obj in self.bindings.items()
+                             if key in contacts and valid_object(obj, scene)}
+            self.status = f'{len(contacts)} active contact(s); position applied on release'
+            return
+        # Keep the press pose even if a move or release arrived before this tick.
+        for client, points in downs.items():
+            for point in points:
+                key = (client, point.id)
+                move(key, point)
+                obj = self.bindings.get(key)
+                if obj and obj.as_pointer() in self.driven:
+                    self.down_poses.append((obj, self.driven[obj.as_pointer()][1], tuple(obj.location)))
         # Apply a release's final coordinates before releasing its ownership.
         # Fast down/up pairs coalesced between timer ticks still place an Empty.
         for client, points in ended.items():

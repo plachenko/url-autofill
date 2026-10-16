@@ -15,7 +15,12 @@ export function pointerPosition(event, bounds) {
   };
 }
 
-export function pointerPositionsMessage(phase, changed, activePointers, plane = 'z') {
-  return { type: 'pointer_positions', phase, plane, changed,
+export function touchPosition(touch, bounds, id) {
+  return pointerPosition({ pointerId: id, pointerType: 'touch',
+    clientX: touch.clientX, clientY: touch.clientY, pressure: touch.force || 0 }, bounds);
+}
+
+export function pointerPositionsMessage(phase, changed, activePointers, plane = 'z', axisLock = null) {
+  return { type: 'pointer_positions', phase, plane, axis_lock: axisLock, changed,
     pointers: [...activePointers].sort((a, b) => a.id - b.id) };
 }

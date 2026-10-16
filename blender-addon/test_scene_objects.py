@@ -31,6 +31,25 @@ class Tests(unittest.IsolatedAsyncioTestCase):
         inbox.submit('client',base)
         self.assertEqual(inbox.drain()[0][1],base)
 
+    def test_move_recording_frame_spacing(self):
+        inbox=requests.SceneRequestInbox()
+        base=dict(type='pointer_record_start',request_id='record',scene_id='scene',revision=1,frame_step=4)
+        for bad in (0, -1, True, '4', 1001, 1.5):
+            with self.assertRaises(ValueError):inbox.submit('client',{**base,'frame_step':bad})
+        inbox.submit('client',base)
+        self.assertEqual(inbox.drain()[0][1],{**base,'mode':'move'})
+        inbox.submit('client',{**base,'mode':'down'})
+        self.assertEqual(inbox.drain()[0][1]['mode'],'down')
+        inbox.submit('client',{**base,'mode':'up'})
+        self.assertEqual(inbox.drain()[0][1]['mode'],'up')
+        with self.assertRaises(ValueError):inbox.submit('client',{**base,'mode':'hover'})
+        stop=dict(type='pointer_record_stop',request_id='stop',scene_id='scene',revision=2)
+        inbox.submit('client',stop)
+        self.assertEqual(inbox.drain()[0][1],stop)
+        seek=dict(type='pointer_frame_set',request_id='frame',scene_id='scene',revision=2,frame=42)
+        inbox.submit('client',seek)
+        self.assertEqual(inbox.drain()[0][1],seek)
+
     async def test_connect_refresh_follow_reply_disconnect_reconnect(self):
         srv=server.RenderServer();srv.start('127.0.0.1',0)
         catalog=dict(type='scene_objects',version=1,revision=1,scene=dict(id='scene',name='Scene'),objects=[])
@@ -61,6 +80,14 @@ class Tests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(json.loads(await a.recv()),catalog);await b.recv()
                 await a.send(json.dumps({**command(),'revision':0}))
                 self.assertFalse(json.loads(await a.recv())['ok'])
+                await a.send(json.dumps(dict(type='pointer_record_start',request_id='record',scene_id='scene',revision=2,frame_step=0)))
+                failure=json.loads(await a.recv());self.assertEqual(failure['type'],'pointer_record_start_result');self.assertFalse(failure['ok'])
+                await a.send(json.dumps(dict(type='pointer_record_start',request_id='record',scene_id='scene',revision=2,frame_step=4)))
+                await a.send('record barrier');self.assertEqual(await a.recv(),'record barrier')
+                self.assertEqual(srv.object_requests.drain()[0][1]['frame_step'],4)
+                await a.send(json.dumps(dict(type='pointer_frame_set',request_id='frame',scene_id='scene',revision=2,frame=20)))
+                await a.send('frame barrier');self.assertEqual(await a.recv(),'frame barrier')
+                self.assertEqual(srv.object_requests.drain()[0][1]['frame'],20)
                 await a.send(json.dumps(command()));await a.send('barrier');await a.recv()
             for _ in range(100):
                 if not srv._scene_clients:break

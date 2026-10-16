@@ -56,6 +56,8 @@ class ProtocolTests(unittest.TestCase):
                message('down', point(identity=True), [first]), message('down', point(pressure=True), [first]),
                message('down', point(x=-.01), [first]), message('down', point(y=1.01), [first]),
                message('down', first, [point(i) for i in range(p.MAX_CONTACTS + 1)])]
+        bad.append({**message('down', first, [first]), 'axis_lock': 'diagonal'})
+        bad.append({**message('down', first, [first]), 'axis_lock': True})
         for value in bad:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 inbox.submit('client', value)
@@ -76,6 +78,30 @@ class ProtocolTests(unittest.TestCase):
             inbox.submit('overflow', message('reset'))
         inbox.clear()
         self.assertEqual(inbox.snapshot(), ({}, {}))
+
+    def test_down_pulse_survives_a_fast_release_for_auto_keyframing(self):
+        inbox = p.PointerInbox()
+        first = point(x=.25)
+        inbox.submit('a', message('down', first, [first]))
+        inbox.submit('a', message('up', point(x=.75)))
+        states, ends, downs, ups = inbox.snapshot_with_downs()
+        self.assertEqual(states['a'].pointers, ())
+        self.assertEqual(ends['a'][0].x, .75)
+        self.assertEqual(downs['a'][0].x, .25)
+        self.assertEqual(ups['a'][0].x, .75)
+        self.assertEqual(inbox.snapshot_with_downs()[2], {})
+
+    def test_up_pulses_preserve_each_release_between_blender_ticks(self):
+        inbox = p.PointerInbox()
+        for x in (.2, .8):
+            down = point(x=.1)
+            inbox.submit('a', message('down', down, [down]))
+            inbox.submit('a', message('up', point(x=x)))
+        states, ends, downs, ups = inbox.snapshot_with_downs()
+        self.assertEqual(states['a'].pointers, ())
+        self.assertEqual([item.x for item in ups['a']], [.2, .8])
+        self.assertEqual(ends['a'][0].x, .8)
+        self.assertEqual(inbox.snapshot_with_downs()[3], {})
 
     def test_remote_plane_mapping_validation_and_reset(self):
         self.assertEqual([p.resolve_plane(axis, 'XY') for axis in ['x', 'y', 'z', None]], ['YZ', 'XZ', 'XY', 'XY'])
@@ -101,6 +127,22 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(p.plane_offset(1, 0, 'YZ', 8, 6), (0, 4, 3))
         with self.assertRaises(ValueError):
             p.plane_offset(.5, .5, 'XYZ', 8, 6)
+
+    def test_axis_lock_is_carried_with_pointer_frames(self):
+        inbox = p.PointerInbox()
+        first = point()
+        inbox.submit('client', {**message('down', first, [first]), 'axis_lock': 'x'})
+        self.assertEqual(inbox.snapshot()[0]['client'].axis_lock, 'x')
+        inbox.submit('client', message('move', first, [first]))
+        self.assertIsNone(inbox.snapshot()[0]['client'].axis_lock)
+
+    def test_axis_lock_preserves_other_coordinates_even_with_rotated_axis(self):
+        self.assertEqual(p.constrain_to_axis((3, 4, 5), (8, 9, 1), (1, 0, 0)), (8, 4, 5))
+        diagonal = 2 ** -.5
+        result = p.constrain_to_axis((0, 0, 5), (4, 0, 0), (diagonal, diagonal, 0))
+        self.assertAlmostEqual(result[0], 2)
+        self.assertAlmostEqual(result[1], 2)
+        self.assertEqual(result[2], 5)
 
 
 class SocketTests(unittest.IsolatedAsyncioTestCase):

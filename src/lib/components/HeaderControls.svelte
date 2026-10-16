@@ -1,27 +1,41 @@
 <script>
   import { onMount } from "svelte";
   import { base } from "$app/paths";
-  import { canShowTeslaTheater, teslaTheaterPreferenceEvent } from "../tesla-browser.js";
-  import { loadWebsocketFavorites, websocketFavoritesKey, websocketFavoritesChangedEvent,
-    websocketConnectRequestEvent, websocketConnectionEvent, websocketConnectionRequestEvent } from "../websocket-favorites.js";
-  import { websocketPointerOverlayEvent, websocketPointerOverlayStateEvent } from "../websocket-pointers.js";
+  import {
+    canShowTeslaTheater,
+    teslaTheaterPreferenceEvent,
+  } from "../tesla-browser.js";
+  import {
+    loadWebsocketFavorites,
+    websocketFavoritesKey,
+    websocketFavoritesChangedEvent,
+    websocketConnectRequestEvent,
+    websocketConnectionEvent,
+    websocketConnectionRequestEvent,
+  } from "../websocket-favorites.js";
+  import {
+    websocketPointerOverlayEvent,
+    websocketPointerOverlayStateEvent,
+  } from "../websocket-pointers.js";
 
   let teslaBrowser = $state(false);
   let favorites = $state([]);
-  let selectedServer = $state('');
-  let activeServer = $state('');
+  let selectedServer = $state("");
+  let activeServer = $state("");
   let connecting = $state(false);
   let connected = $state(false);
-  let connectionStatus = $state('');
+  let connectionStatus = $state("");
   let pointersOpen = $state(false);
 
   function refreshFavorites() {
     favorites = loadWebsocketFavorites(window.localStorage);
-    if (!favorites.includes(selectedServer)) selectedServer = favorites[0] || '';
+    if (!favorites.includes(selectedServer))
+      selectedServer = favorites[0] || "";
   }
 
   function onStorage(event) {
-    if (event.key === websocketFavoritesKey || event.key === null) refreshFavorites();
+    if (event.key === websocketFavoritesKey || event.key === null)
+      refreshFavorites();
   }
 
   function onConnection(event) {
@@ -29,7 +43,8 @@
     connecting = event.detail.connecting;
     connected = event.detail.connected;
     connectionStatus = event.detail.status;
-    if (connecting && favorites.includes(activeServer)) selectedServer = activeServer;
+    if (connecting && favorites.includes(activeServer))
+      selectedServer = activeServer;
     if (!connected) pointersOpen = false;
   }
 
@@ -39,30 +54,52 @@
 
   function togglePointers() {
     pointersOpen = !pointersOpen;
-    window.dispatchEvent(new CustomEvent(websocketPointerOverlayEvent, { detail: { open: pointersOpen } }));
+    window.dispatchEvent(
+      new CustomEvent(websocketPointerOverlayEvent, {
+        detail: { open: pointersOpen },
+      }),
+    );
   }
 
   function connectFavorite() {
     if (!selectedServer) return;
-    window.dispatchEvent(new CustomEvent(websocketConnectRequestEvent, { detail: { endpoint: selectedServer } }));
+    window.dispatchEvent(
+      new CustomEvent(websocketConnectRequestEvent, {
+        detail: { endpoint: selectedServer },
+      }),
+    );
   }
 
   onMount(() => {
-    const refresh = () => { teslaBrowser = canShowTeslaTheater(navigator.userAgent, window.localStorage); };
+    const refresh = () => {
+      teslaBrowser = canShowTeslaTheater(
+        navigator.userAgent,
+        window.localStorage,
+      );
+    };
     refresh();
     refreshFavorites();
     window.addEventListener(teslaTheaterPreferenceEvent, refresh);
     window.addEventListener(websocketFavoritesChangedEvent, refreshFavorites);
-    window.addEventListener('storage', onStorage);
+    window.addEventListener("storage", onStorage);
     window.addEventListener(websocketConnectionEvent, onConnection);
-    window.addEventListener(websocketPointerOverlayStateEvent, onPointerOverlayState);
+    window.addEventListener(
+      websocketPointerOverlayStateEvent,
+      onPointerOverlayState,
+    );
     window.dispatchEvent(new Event(websocketConnectionRequestEvent));
     return () => {
       window.removeEventListener(teslaTheaterPreferenceEvent, refresh);
-      window.removeEventListener(websocketFavoritesChangedEvent, refreshFavorites);
-      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(
+        websocketFavoritesChangedEvent,
+        refreshFavorites,
+      );
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener(websocketConnectionEvent, onConnection);
-      window.removeEventListener(websocketPointerOverlayStateEvent, onPointerOverlayState);
+      window.removeEventListener(
+        websocketPointerOverlayStateEvent,
+        onPointerOverlayState,
+      );
     };
   });
 </script>
@@ -82,25 +119,48 @@
   </div>
   {#if favorites.length}
     <div class="header-websocket">
-      <select aria-label="Favorite WebSocket server" bind:value={selectedServer}>
+      <select
+        aria-label="Favorite WebSocket server"
+        bind:value={selectedServer}
+      >
         {#each favorites as favorite}
           <option value={favorite}>{favorite}</option>
         {/each}
       </select>
-      <button id="header-websocket-connect" type="button" onclick={connectFavorite}
+      <button
+        id="header-websocket-connect"
+        type="button"
+        onclick={connectFavorite}
         disabled={connecting && activeServer === selectedServer}
         aria-label={`Connect to favorite WebSocket server ${selectedServer}`}
-        title={activeServer === selectedServer ? connectionStatus : `Connect to ${selectedServer}`}>
-        {connecting && activeServer === selectedServer ? 'Connecting…' : connected && activeServer === selectedServer ? 'Reconnect' : 'Connect'}
+        title={activeServer === selectedServer
+          ? connectionStatus
+          : `Connect to ${selectedServer}`}
+      >
+        {connecting && activeServer === selectedServer
+          ? "Connecting…"
+          : connected && activeServer === selectedServer
+            ? "Reconnect"
+            : "Connect"}
       </button>
       <span class="header-websocket-status" role="status" aria-live="polite">
-        {activeServer === selectedServer && connected ? 'Connected' : activeServer === selectedServer && connecting ? 'Connecting' : ''}
+        {activeServer === selectedServer && connected
+          ? "Connected"
+          : activeServer === selectedServer && connecting
+            ? "Connecting"
+            : ""}
       </span>
     </div>
   {/if}
   {#if connected}
-    <button id="header-pointers-toggle" type="button" aria-controls="pointer-overlay"
-      aria-expanded={pointersOpen} aria-pressed={pointersOpen} onclick={togglePointers}>Pointers</button>
+    <button
+      id="header-pointers-toggle"
+      type="button"
+      aria-controls="pointer-overlay"
+      aria-expanded={pointersOpen}
+      aria-pressed={pointersOpen}
+      onclick={togglePointers}>Pointers</button
+    >
   {/if}
   <div class="header-actions p-2">
     <button

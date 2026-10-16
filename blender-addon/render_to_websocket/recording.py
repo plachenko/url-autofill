@@ -69,9 +69,11 @@ class PointerRecorder:
         obj['rtws_pointer_recorded'] = True
         self.objects[obj.as_pointer()] = dict(obj=obj, location=tuple(baseline), last_frame=self.start_frame)
 
-    def start(self, scene):
+    def start(self, scene, mode='realtime', frame_step=1):
         if self.running:
             raise RuntimeError('A pointer recording is already running')
+        if mode not in ('realtime', 'move', 'down', 'up') or type(frame_step) is not int or not 1 <= frame_step <= 1000:
+            raise RuntimeError('Frame spacing must be an integer from 1 to 1000')
         settings = scene.rtws_pointer
         if not settings.enabled or settings.origin is None:
             raise RuntimeError('Enable pointer control and select an origin object first')
@@ -88,6 +90,8 @@ class PointerRecorder:
         self.objects = {}
         self.fps = scene.render.fps / scene.render.fps_base
         self.start_frame = self.frame = scene.frame_current
+        self.mode = mode
+        self.frame_step = frame_step
         self.started = self.clock()
         self.running = True
         self.set_range = settings.record_set_range
@@ -97,7 +101,8 @@ class PointerRecorder:
         except Exception:
             self.running = False
             raise
-        self.status = f'Recording from frame {self.start_frame} at {self.fps:g} fps'
+        self.status = (f'Recording on {mode} every {frame_step} frame(s) from frame {self.start_frame}'
+                       if mode in ('move', 'down', 'up') else f'Recording from frame {self.start_frame} at {self.fps:g} fps')
 
     def advance(self, scene):
         if not self.running:
@@ -110,6 +115,8 @@ class PointerRecorder:
             return
         if abs(scene.render.fps / scene.render.fps_base - self.fps) > .00001:
             self.stop(reason='Stopped: scene frame rate changed')
+            return
+        if self.mode in ('move', 'down', 'up'):
             return
         frame = min(1048574, self.start_frame + max(0, math.floor((self.clock() - self.started) * self.fps + 1e-6)))
         if frame > scene.frame_end:
@@ -124,8 +131,59 @@ class PointerRecorder:
         for item in self.objects.values():
             item['obj'].location = item['location']
 
-    def capture(self, driven):
+    def capture(self, driven, down_poses=(), up_poses=()):
         if not self.running:
+            return
+        if self.mode in ('down', 'up'):
+            trigger_poses = down_poses if self.mode == 'down' else up_poses
+            if not trigger_poses:
+                return
+            live_locations = {obj.as_pointer(): tuple(obj.location) for obj, _ in driven.values()}
+            for triggered_obj, baseline, triggered_location in trigger_poses:
+                next_frame = self.frame + self.frame_step
+                if next_frame > 1048574:
+                    self.stop(reason='Stopped at Blender maximum frame')
+                    break
+                self._track(triggered_obj, baseline)
+                self.frame = next_frame
+                scene = self.scene
+                scene.frame_end = max(scene.frame_end, self.frame)
+                scene.frame_start = min(scene.frame_start, self.frame)
+                scene.frame_set(self.frame)
+                for item in self.objects.values():
+                    obj = item['obj']
+                    current = triggered_location if obj == triggered_obj else item['location']
+                    obj.location = current
+                    key_location(obj, self.frame)
+                    item.update(location=current, last_frame=self.frame)
+            for obj, _ in driven.values():
+                obj.location = live_locations[obj.as_pointer()]
+            if self.running:
+                self.status = f'Recording on {self.mode}: frame {self.frame} | {len(self.objects)} Empty(s)'
+            return
+        if self.mode == 'move':
+            changed = [(obj, baseline, tuple(obj.location)) for obj, baseline in driven.values()
+                       if tuple(obj.location) != self.objects.get(obj.as_pointer(), {}).get('location', tuple(baseline))]
+            if not changed:
+                return
+            next_frame = self.frame + self.frame_step
+            if next_frame > 1048574:
+                self.stop(reason='Stopped at Blender maximum frame')
+                return
+            for obj, baseline, current in changed:
+                self._track(obj, baseline)
+            self.frame = next_frame
+            scene = self.scene
+            scene.frame_end = max(scene.frame_end, self.frame)
+            scene.frame_start = min(scene.frame_start, self.frame)
+            scene.frame_set(self.frame)
+            for item in self.objects.values():
+                obj = item['obj']
+                current = next((pose for candidate, _, pose in changed if candidate == obj), item['location'])
+                obj.location = current
+                key_location(obj, self.frame)
+                item.update(location=current, last_frame=self.frame)
+            self.status = f'Recording on {self.mode}: frame {self.frame} | {len(self.objects)} Empty(s)'
             return
         for obj, baseline in driven.values():
             current = tuple(obj.location)

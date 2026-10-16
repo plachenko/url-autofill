@@ -4,6 +4,7 @@ import uuid
 import bpy
 from mathutils import Vector
 from .pointer_control import new_empty, valid_object, ancestors
+from .recording import location_curves
 
 FOLLOW_ROOT = 'rtws_pointer_follow_root'
 MAX_OBJECTS = 4096
@@ -42,7 +43,7 @@ class SceneObjectCatalog:
         self._objects = {}
         self.message = None
 
-    def refresh(self, scene, recording=False, rendering=False):
+    def refresh(self, scene, recording=False, rendering=False, record_mode=None):
         _main_thread()
         if scene != self.scene:
             self.reset()
@@ -50,6 +51,9 @@ class SceneObjectCatalog:
         objects = sorted(scene.objects, key=lambda obj: (obj.name.casefold(), _object_id(obj)))[:MAX_OBJECTS]
         self._objects = {_object_id(obj): obj for obj in objects}
         settings = scene.rtws_pointer
+        target = settings.target if valid_object(settings.target, scene) else None
+        keyframes = sorted({round(point.co.x) for curve in location_curves(target)
+                            for point in curve.keyframe_points}) if target else []
         data = dict(scene=dict(id=self.scene_id, name=scene.name),
             objects=[dict(id=_object_id(obj), name=obj.name, object_type=obj.type,
                           parent_id=_object_id(obj.parent) if obj.parent else None,
@@ -57,23 +61,29 @@ class SceneObjectCatalog:
                           can_follow=bool(obj.is_editable and not recording and not rendering),
                           reason='Recording in progress' if recording else 'Rendering in progress' if rendering else '' if obj.is_editable else 'Object is read-only') for obj in objects],
             total=len(scene.objects), truncated=len(scene.objects) > MAX_OBJECTS,
+            timeline=dict(start=scene.frame_start, end=scene.frame_end,
+                          current=scene.frame_current, keyframes=keyframes[-512:],
+                          keys_truncated=len(keyframes) > 512),
             pointer=dict(origin_id=_object_id(settings.origin) if valid_object(settings.origin, scene) else None,
                          target_id=_object_id(settings.target) if valid_object(settings.target, scene) else None,
                          followed_object_id=_object_id(settings.followed) if valid_object(settings.followed, scene) and valid_object(settings.target, scene) and settings.target in tuple(ancestors(settings.followed)) else None,
                          enabled=settings.enabled, use_browser_plane=settings.remote_plane,
                          plane=settings.plane, width=settings.width, height=settings.height,
-                         recording=recording, rendering=rendering),
+                         recording=recording, record_mode=record_mode if recording else None,
+                         rendering=rendering),
             planes={'x': 'YZ', 'y': 'XZ', 'z': 'XY'},
-            capabilities=['pointer_follow', 'pointer_plane_set', 'scene_objects_request'])
+            capabilities=['pointer_follow', 'pointer_plane_set', 'pointer_record_move',
+                          'pointer_record_down', 'pointer_record_up', 'pointer_timeline',
+                          'pointer_axis_lock', 'scene_objects_request'])
         if data != self._data:
             self.revision += 1
             self._data = data
             self.message = dict(type='scene_objects', version=1, revision=self.revision, **data)
         return self.message
 
-    def follow(self, scene, request, recording=False):
+    def follow(self, scene, request, recording=False, record_mode=None):
         _main_thread()
-        self.refresh(scene, recording)
+        self.refresh(scene, recording, record_mode=record_mode)
         if request['scene_id'] != self.scene_id or request['revision'] != self.revision:
             raise ValueError('Object list changed; refresh it and choose the object again')
         if recording:
@@ -117,22 +127,22 @@ class SceneObjectCatalog:
         settings.followed = obj
         settings.enabled = request.get('enable', settings.enabled)
         bpy.context.view_layer.update()
-        self.refresh(scene, recording)
+        self.refresh(scene, recording, record_mode=record_mode)
         return dict(type='pointer_follow_result', request_id=request['request_id'], ok=True,
                     scene_id=self.scene_id, revision=self.revision, object_id=_object_id(obj),
                     target_id=_object_id(root), origin_id=_object_id(origin), already_following=already,
                     enabled=settings.enabled, message=f'{obj.name} follows {root.name}')
 
-    def set_plane(self, scene, request, recording=False):
+    def set_plane(self, scene, request, recording=False, record_mode=None):
         _main_thread()
-        self.refresh(scene, recording)
+        self.refresh(scene, recording, record_mode=record_mode)
         if request['scene_id'] != self.scene_id or request['revision'] != self.revision:
             raise ValueError('Plane settings changed; refresh scene_objects and try again')
         if recording:
             raise ValueError('Stop recording before changing plane dimensions')
         scene.rtws_pointer.width = request['width']
         scene.rtws_pointer.height = request['height']
-        self.refresh(scene, recording)
+        self.refresh(scene, recording, record_mode=record_mode)
         for screen in bpy.data.screens:
             for area in screen.areas:
                 if area.type == 'VIEW_3D':
