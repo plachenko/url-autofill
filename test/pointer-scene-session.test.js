@@ -116,6 +116,24 @@ test('recording and rendering lock commands, and a response for another scene is
   assert.equal(h.session.snapshot().attachedId, 'ball');
 });
 
+test('rendering the current frame uses the advertised scene and clears the pending request', () => {
+  const h = harness();
+  const capabilities = [...catalog().capabilities, 'pointer_render'];
+  h.session.connect();
+  h.session.receive(catalog(2, { capabilities }));
+  assert.equal(h.session.renderFrame(), true);
+  assert.deepEqual(h.commands.at(-1), { type: 'pointer_render', request_id: 'render-1',
+    scene_id: 'scene-1', revision: 2 });
+  assert.equal(h.resets, 1);
+  assert.equal(h.session.renderFrame(), false);
+  h.session.receive({ type: 'pointer_render_result', request_id: 'render-1', ok: true,
+    scene_id: 'scene-1', message: 'Rendering current frame' });
+  assert.equal(h.session.snapshot().pending, null);
+  assert.equal(h.session.snapshot().notice, 'Rendering current frame');
+  h.session.receive(catalog(3, { capabilities, pointer: { ...catalog().pointer, rendering: true } }));
+  assert.equal(h.session.renderFrame(), false);
+});
+
 test('stale failures, scene switches, timeout and reconnect never replay an old command', () => {
   const h = harness();
   h.session.connect();

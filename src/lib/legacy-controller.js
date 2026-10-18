@@ -1588,7 +1588,7 @@ import { createPreviewSplits } from './preview-splits.js';
         row.classList.toggle('selected-track', selected);
         const heading = row.querySelector('.track-heading');
         heading?.setAttribute('aria-pressed', String(selected));
-        if (heading) heading.textContent = `Track ${trackIndex + 1}${trackIndex === activeTrack ? ' ✓' : ''}`;
+        if (heading) heading.textContent = `Track ${trackIndex + 1}`;
       });
       deleteTracksButton.disabled = selectedTracks.size === 0;
       deleteTracksButton.textContent = selectedTracks.size
@@ -2054,7 +2054,7 @@ import { createPreviewSplits } from './preview-splits.js';
         const heading = document.createElement('button');
         heading.type = 'button';
         heading.className = 'track-heading';
-        heading.textContent = `Track ${trackIndex + 1}${trackIndex === activeTrack ? ' ✓' : ''}`;
+        heading.textContent = `Track ${trackIndex + 1}`;
         heading.setAttribute('aria-label', `Track ${trackIndex + 1}; tap to select, Shift to select a range, drag to reorder`);
         heading.setAttribute('aria-pressed', String(selectedTracks.has(tracks[trackIndex])));
         heading.title = 'Tap to select this track; drag to reorder';
@@ -2619,7 +2619,9 @@ import { createPreviewSplits } from './preview-splits.js';
         const target = document.elementFromPoint(x, y);
         trackContent.querySelectorAll('.clip-library-drop-target').forEach(row =>
           row.classList.remove('clip-library-drop-target'));
-        target?.closest('#track-list .track-row[data-track]')?.classList.add('clip-library-drop-target');
+        const row = target?.closest('#track-list .track-row[data-track]');
+        row?.classList.add('clip-library-drop-target');
+        ghost.textContent = row ? `${clip.id} → Track ${Number(row.dataset.track) + 1}` : clip.id;
         document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag',
           { detail: { phase: 'move', clientX: x, clientY: y } }));
       }

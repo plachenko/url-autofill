@@ -1,10 +1,10 @@
-# Render to WebSocket — Blender add-on 1.14.0
+# Render to WebSocket — Blender add-on 1.15.0
 
 Transfers completed Blender outputs in verified base64 chunks, replays the latest file after reconnect, and accepts pointer positions from URL Autofill to drive and record Empties.
 
 ## Install
 
-Run `python blender-addon/build.py` from the repository root. Install the resulting `blender-addon/render_to_websocket-1.14.0.zip` through Blender Preferences > Add-ons > Install from Disk. Restart Blender after replacing an already loaded version. Blender 4.2+ is targeted; integration tests use Blender 5.2.2.
+Run `python blender-addon/build.py` from the repository root. Install the resulting `blender-addon/render_to_websocket-1.15.0.zip` through Blender Preferences > Add-ons > Install from Disk. Restart Blender after replacing an already loaded version. Blender 4.2+ is targeted; integration tests use Blender 5.2.2.
 
 The vendored pure-Python websockets runtime needs no pip installation. Its BSD license is included in `render_to_websocket/vendor/websockets-17.2.dist-info/licenses/LICENSE`. Original add-on author: Denis Perchenko.
 
@@ -30,6 +30,8 @@ A new take action is assigned to each driven object; the previous action is copi
 The browser pointer overlay has an **Auto Keyframe** button. Choose **Pointer down** to insert a location key at each press, **Pointer up** to hold the object during a press and drag then place and key it at release, or **Pointer move** to key each changed pose sampled by Blender. Set **Frames between keyframes** to an integer from 1 to 1000. Each trigger advances Blender's timeline by that many frames; idle time adds no frames or keys. Press the button again to finish the take and disable live pointer control. The compact browser timeline shows Blender's frame range, current frame, and the target Empty's latest 512 location keyframes. Drag its slider to set Blender's current frame while recording is stopped. Pointer up requires add-on 1.13.0 or newer; the other controls require 1.12.0 or newer.
 
 **Axis lock** in the browser offers Free, X, Y, and Z. Choosing an axis moves the controlled Empty only along that axis within the active movement plane and preserves its other coordinates. An axis perpendicular to the plane is disabled. With **Use origin object rotation** enabled, X/Y/Z follow the origin's rotated local axes. Changing the lock ends the current pointer gesture. Axis lock requires add-on 1.14.0 or newer.
+
+**Render current frame** in the pointer overlay starts a still render of Blender's current frame. Stop recording first and keep **Enable auto-send** on in Server mode. Render progress and the completed image appear in the browser's WebSocket panel. This requires add-on 1.15.0 or newer.
 
 Empties do not render themselves. Parent or constrain a visible object to the Empty to use its movement in a rendered animation. Clear Extra Pointer Empties preserves recorded extras, the selected target and origin.
 

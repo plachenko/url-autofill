@@ -112,7 +112,7 @@
   .track-row { display: flex; width: max-content; min-width: 100%;
     align-items: stretch; gap: 8px; }
   .track-heading { position: sticky; left: 0; z-index: 8; width: 88px; flex: 0 0 88px;
-    font-weight: 700; padding: 12px 0; background: #284e82;
+    font-weight: 700; padding: 12px 0; background: #182130;
     box-shadow: 4px 0 8px #10151e99; }
   .track-heading:not(.timeline-zoom) { min-height: 32px; cursor: grab; touch-action: none;
     transition: padding-block .24s ease; }
@@ -418,9 +418,13 @@
   #timeline-clips-status { margin: 6px 0 0; font-size: 12px; color: #b8c8e0; }
   #timeline-clips-status.error { color: #ffb4b4; }
   .clip-library-ghost { position: fixed; z-index: 2000; width: 112px; max-height: 84px;
-    object-fit: contain; pointer-events: none; border: 2px solid #ffd976;
+    display: grid; place-items: center; padding: 6px; overflow-wrap: anywhere;
+    font-size: 12px; text-align: center; pointer-events: none; border: 2px solid #ffd976;
     border-radius: 5px; background: #10151e; box-shadow: 0 6px 20px #0009; }
-  .track-row.clip-library-drop-target .track-lane { border-color: #ffd976; background: #263040; }
+  .track-row.clip-library-drop-target .track-heading { color: #fff; border-color: #ffd976;
+    background: #685327; box-shadow: inset 0 0 0 2px #ffd976; }
+  .track-row.clip-library-drop-target .track-lane { border-color: #ffd976; background: #263040;
+    box-shadow: inset 0 0 0 2px #ffd97688; }
   body.render-focus #compositor { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom));
     opacity: .3; transition: opacity .15s ease; touch-action: pan-x; }
   body.render-focus #compositor:hover, body.render-focus #compositor:focus-within { opacity: 1; }
@@ -560,6 +564,7 @@
   .pointer-scene-size { margin-top: 8px; }
   .pointer-scene-size input { width: 88px; }
   .pointer-scene-summary { color: #b8c8e0; overflow-wrap: anywhere; }
+  .pointer-render-action { margin-top: 8px; }
   .pointer-auto-keyframe { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .pointer-auto-keyframe button.recording { background: #903c45; border-color: #ff9aa2; }
   .pointer-auto-keyframe input { width: 72px; }

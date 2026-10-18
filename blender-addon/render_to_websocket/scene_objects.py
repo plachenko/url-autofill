@@ -74,7 +74,7 @@ class SceneObjectCatalog:
             planes={'x': 'YZ', 'y': 'XZ', 'z': 'XY'},
             capabilities=['pointer_follow', 'pointer_plane_set', 'pointer_record_move',
                           'pointer_record_down', 'pointer_record_up', 'pointer_timeline',
-                          'pointer_axis_lock', 'scene_objects_request'])
+                          'pointer_axis_lock', 'pointer_render', 'scene_objects_request'])
         if data != self._data:
             self.revision += 1
             self._data = data

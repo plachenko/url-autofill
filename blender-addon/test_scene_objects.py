@@ -49,6 +49,9 @@ class Tests(unittest.IsolatedAsyncioTestCase):
         seek=dict(type='pointer_frame_set',request_id='frame',scene_id='scene',revision=2,frame=42)
         inbox.submit('client',seek)
         self.assertEqual(inbox.drain()[0][1],seek)
+        render=dict(type='pointer_render',request_id='render',scene_id='scene',revision=2)
+        inbox.submit('client',render)
+        self.assertEqual(inbox.drain()[0][1],render)
 
     async def test_connect_refresh_follow_reply_disconnect_reconnect(self):
         srv=server.RenderServer();srv.start('127.0.0.1',0)
@@ -88,6 +91,9 @@ class Tests(unittest.IsolatedAsyncioTestCase):
                 await a.send(json.dumps(dict(type='pointer_frame_set',request_id='frame',scene_id='scene',revision=2,frame=20)))
                 await a.send('frame barrier');self.assertEqual(await a.recv(),'frame barrier')
                 self.assertEqual(srv.object_requests.drain()[0][1]['frame'],20)
+                await a.send(json.dumps(dict(type='pointer_render',request_id='render',scene_id='scene',revision=2)))
+                await a.send('render barrier');self.assertEqual(await a.recv(),'render barrier')
+                self.assertEqual(srv.object_requests.drain()[0][1]['type'],'pointer_render')
                 await a.send(json.dumps(command()));await a.send('barrier');await a.recv()
             for _ in range(100):
                 if not srv._scene_clients:break

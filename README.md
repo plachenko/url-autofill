@@ -89,3 +89,5 @@ In Blender's Output Properties > Render to WebSocket > WebSocket Pointer Control
 For stepped recording from the browser, choose **Auto Keyframe** in the pointer overlay. **Pointer up** holds the controlled object in place while you drag, then sets its position and adds a keyframe when you release. Set **Frames between keyframes** to control the timeline step. This mode requires add-on 1.13.0 or newer.
 
 Use **Axis lock** below the pointer controls to choose Free or constrain movement to X, Y, or Z on the active plane. Axes outside the plane are disabled. This requires add-on 1.14.0 or newer.
+
+Choose **Render current frame** in the pointer overlay to render Blender's current frame and receive the image through the WebSocket panel. Stop recording first and enable auto-send in Blender's Server mode. This requires add-on 1.15.0 or newer.

@@ -140,7 +140,7 @@ class RenderServer:
                         await ws.send(json.dumps(dict(type='pointer_error', message=str(exc))))
                 elif isinstance(response, dict) and response.get('type') == 'scene_objects_request':
                     await ws.send(self.scene_objects or json.dumps(dict(type='scene_objects_pending', version=1)))
-                elif isinstance(response, dict) and response.get('type') in {'pointer_follow', 'pointer_plane_set', 'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set'}:
+                elif isinstance(response, dict) and response.get('type') in {'pointer_follow', 'pointer_plane_set', 'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set', 'pointer_render'}:
                     try:
                         self.object_requests.submit(pointer_client, response)
                     except ValueError as exc:

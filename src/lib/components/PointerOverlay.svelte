@@ -340,6 +340,12 @@
           {#if pointerSettings.target_id} · Target {scene.catalog.objects.find(object => object.id === pointerSettings.target_id)?.name || pointerSettings.target_id}{/if}
           {#if pointerSettings.origin_id} · Origin {scene.catalog.objects.find(object => object.id === pointerSettings.origin_id)?.name || pointerSettings.origin_id}{/if}
         </p>
+        {#if scene.catalog.capabilities?.includes('pointer_render')}
+          <div class="pointer-render-action">
+            <button type="button" onclick={() => sceneSession.renderFrame()}
+              disabled={Boolean(scene.pending) || sceneSyncing || sceneLocked}>Render current frame</button>
+          </div>
+        {/if}
         {#if scene.catalog.capabilities?.includes('pointer_record_move')}
           <div class="pointer-auto-keyframe">
             <button type="button" class:recording={pointerSettings.recording && ['move', 'down', 'up'].includes(pointerSettings.record_mode)}

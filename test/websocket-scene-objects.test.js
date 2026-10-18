@@ -47,3 +47,11 @@ test('auto keyframe modes and timeline frames are validated', () => {
   assert.equal(sceneObjectMessage(JSON.stringify({ ...catalog,
     timeline: { ...timeline, keyframes: [NaN] } })), null);
 });
+
+test('render commands require a scene revision and recognize the result', () => {
+  const command = { type: 'pointer_render', request_id: 'render-1', scene_id: 'scene-1', revision: 2 };
+  assert.equal(validSceneCommand(command), true);
+  assert.equal(validSceneCommand({ ...command, revision: 0 }), false);
+  assert.deepEqual(sceneObjectMessage('{"type":"pointer_render_result","request_id":"render-1","ok":true}'),
+    { type: 'pointer_render_result', request_id: 'render-1', ok: true });
+});

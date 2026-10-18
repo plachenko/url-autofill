@@ -122,12 +122,13 @@ export function createPointerSceneSession({ sendCommand, resetGesture, onChange,
       return;
     }
     if (!['pointer_follow_result', 'pointer_plane_set_result',
-          'pointer_record_start_result', 'pointer_record_stop_result', 'pointer_frame_set_result'].includes(message.type) ||
+          'pointer_record_start_result', 'pointer_record_stop_result', 'pointer_frame_set_result',
+          'pointer_render_result'].includes(message.type) ||
         !state.pending || message.request_id !== state.pending.requestId) return;
     const pending = state.pending;
     const expectedType = ({ follow: 'pointer_follow_result', size: 'pointer_plane_set_result',
       recordStart: 'pointer_record_start_result', recordStop: 'pointer_record_stop_result',
-      frame: 'pointer_frame_set_result' })[pending.kind];
+      frame: 'pointer_frame_set_result', render: 'pointer_render_result' })[pending.kind];
     if (message.type !== expectedType) return;
     if (message.scene_id && message.scene_id !== pending.sceneId) return;
     clearPending();
@@ -144,7 +145,7 @@ export function createPointerSceneSession({ sendCommand, resetGesture, onChange,
     state.error = '';
     state.notice = message.message || ({ follow: 'Object attached.', size: 'Plane size applied.',
       recordStart: 'Auto Keyframe enabled.', recordStop: 'Recording stopped.',
-      frame: 'Timeline moved.' })[pending.kind];
+      frame: 'Timeline moved.', render: 'Render started.' })[pending.kind];
     if (Number.isSafeInteger(message.revision))
       state.acceptedRevision = Math.max(state.acceptedRevision, message.revision);
     if (pending.kind === 'follow') state.attachedId = message.object_id || pending.objectId;
@@ -297,8 +298,17 @@ export function createPointerSceneSession({ sendCommand, resetGesture, onChange,
     return startCommand(command, { kind: 'frame', requestId, sceneId: command.scene_id });
   }
 
+  function renderFrame() {
+    if (!canEdit('pointer_render')) return false;
+    resetGesture();
+    const requestId = `render-${makeRequestId()}`;
+    const command = { type: 'pointer_render', request_id: requestId,
+      scene_id: state.catalog.scene.id, revision: state.catalog.revision };
+    return startCommand(command, { kind: 'render', requestId, sceneId: command.scene_id });
+  }
+
   function close() { clearPending(); clearDiscovery(); }
   return { snapshot, connect, disconnect, receive, choose, setDraft, reloadDraft,
     setFrameStep, setRecordMode, startAutoKeyframe, stopAutoKeyframe, seekFrame,
-    attach, applySize, canEdit, close, requestCatalog };
+    attach, applySize, renderFrame, canEdit, close, requestCatalog };
 }

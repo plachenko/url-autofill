@@ -9,7 +9,7 @@ class SceneRequestInbox:
         self._pending = {}
 
     def submit(self, client, value):
-        if not isinstance(value, dict) or value.get('type') not in {'pointer_follow', 'pointer_plane_set', 'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set'}:
+        if not isinstance(value, dict) or value.get('type') not in {'pointer_follow', 'pointer_plane_set', 'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set', 'pointer_render'}:
             raise ValueError('Expected a pointer scene command')
         kind = value['type']
         for name in (('request_id', 'scene_id', 'object_id') if kind == 'pointer_follow' else ('request_id', 'scene_id')):

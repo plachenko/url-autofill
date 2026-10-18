@@ -9,7 +9,7 @@ export function sceneObjectMessage(value) {
   if (!message || typeof message !== 'object') return null;
   if (message.type === 'scene_objects_pending') return message.version === 1 ? message : null;
   if (['pointer_follow_result', 'pointer_plane_set_result', 'pointer_record_start_result',
-       'pointer_record_stop_result', 'pointer_frame_set_result'].includes(message.type)) return id(message.request_id) && typeof message.ok === 'boolean' ? message : null;
+       'pointer_record_stop_result', 'pointer_frame_set_result', 'pointer_render_result'].includes(message.type)) return id(message.request_id) && typeof message.ok === 'boolean' ? message : null;
   if (message.type !== 'scene_objects' || message.version !== 1 || !id(message.scene?.id) ||
       typeof message.scene.name !== 'string' || !Number.isSafeInteger(message.revision) || message.revision < 1 ||
       !Array.isArray(message.objects) || message.objects.length > 4096) return null;
@@ -28,6 +28,8 @@ export function sceneObjectMessage(value) {
 
 export function validSceneCommand(message) {
   if (message?.type === 'scene_objects_request') return true;
+  if (message?.type === 'pointer_render') return id(message.request_id) && id(message.scene_id) &&
+    Number.isSafeInteger(message.revision) && message.revision > 0;
   if (['pointer_record_start', 'pointer_record_stop'].includes(message?.type)) return id(message.request_id) && id(message.scene_id) &&
     Number.isSafeInteger(message.revision) && message.revision > 0 &&
     (message.type === 'pointer_record_stop' ||

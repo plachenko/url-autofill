@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Render to WebSocket",
     "author": "Denis Perchenko",
-    "version": (1, 14, 0),
+    "version": (1, 15, 0),
     "blender": (4, 2, 0),
     "location": "Edit > Preferences > Add-ons; Render menu > Send Last Render to WebSocket",
     "description": "Transfers completed render files as verified base64 chunks over WebSocket",
@@ -27,7 +27,7 @@ def _refresh_progress():
     return 0.25
 import re, glob, shutil, subprocess
 
-VERSION_STR = "Render to WebSocket v1.14.0"
+VERSION_STR = "Render to WebSocket v1.15.0"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _VENDOR = os.path.join(_HERE, "vendor")
@@ -103,7 +103,22 @@ def _scene_objects_tick():
                 if bpy.app.is_job_running('RENDER'):
                     raise ValueError('Finish rendering before changing the followed object')
                 kind = request.get('type')
-                if kind in {'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set'}:
+                if kind == 'pointer_render':
+                    if request['scene_id'] != SCENE_OBJECTS.scene_id or request['revision'] != SCENE_OBJECTS.revision:
+                        raise ValueError('Scene changed; refresh and try again')
+                    if RECORDER.running:
+                        raise ValueError('Stop recording before rendering')
+                    prefs = get_prefs()
+                    if not prefs or not prefs.enabled or prefs.mode != 'SERVER':
+                        raise ValueError('Enable auto-send in Blender server mode before rendering')
+                    SERVER.pointers.clear()
+                    POINTER.reset()
+                    outcome = bpy.ops.render.render('EXEC_DEFAULT' if bpy.app.background else 'INVOKE_DEFAULT', write_still=False)
+                    if 'FINISHED' not in outcome and 'RUNNING_MODAL' not in outcome:
+                        raise RuntimeError('Blender could not start the render')
+                    result = dict(type='pointer_render_result', request_id=request['request_id'], ok=True,
+                                  scene_id=SCENE_OBJECTS.scene_id, message='Rendering current frame')
+                elif kind in {'pointer_record_start', 'pointer_record_stop', 'pointer_frame_set'}:
                     SCENE_OBJECTS.refresh(scene, RECORDER.running, rendering, getattr(RECORDER, 'mode', None))
                     if request['scene_id'] != SCENE_OBJECTS.scene_id:
                         raise ValueError('Scene changed; refresh and try again')
