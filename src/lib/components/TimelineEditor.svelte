@@ -59,7 +59,9 @@
       </div>
     </div>
     <div id="track-list" aria-label="Composition tracks">
-      <div id="track-content"></div>
+      <div id="track-content">
+        <button id="add-track-bottom" type="button">+ Add track</button>
+      </div>
     </div>
   </div>
 </section>

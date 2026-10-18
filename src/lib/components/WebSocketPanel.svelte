@@ -326,6 +326,7 @@
       { detail: { phase: 'end' } }));
     document.body.classList.remove('websocket-image-dragging');
     document.getElementById('track-list')?.classList.remove('websocket-image-drop-target');
+    document.getElementById('add-track-bottom')?.classList.remove('websocket-image-drop-target');
   }
 
   function moveImageDrag(event) {
@@ -336,6 +337,9 @@
     const trackList = document.getElementById('track-list');
     const target = document.elementFromPoint(event.clientX, event.clientY);
     trackList?.classList.toggle('websocket-image-drop-target', Boolean(target && trackList.contains(target)));
+    const addTrack = document.getElementById('add-track-bottom');
+    addTrack?.classList.toggle('websocket-image-drop-target',
+      Boolean(target?.closest('#add-track-bottom') && !addTrack.disabled));
     document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-image-pointer-drag',
       { detail: { phase: 'move', clientX: event.clientX, clientY: event.clientY } }));
   }

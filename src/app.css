@@ -109,6 +109,14 @@
   #track-list { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; }
   #track-content { position: relative; width: max-content; min-width: 100%;
     display: grid; gap: 10px; }
+  #add-track-bottom { display: block; width: 100%; min-height: 36px;
+    margin: 0 0 12px; padding: 4px 10px; text-align: left;
+    border: 1px dashed #7085a1; background: #182130; }
+  #add-track-bottom:disabled { opacity: .5; cursor: default; }
+  #add-track-bottom.clip-library-drop-target,
+  #add-track-bottom.clip-move-target,
+  #add-track-bottom.websocket-image-drop-target { border-color: #ffd976;
+    background: #263040; box-shadow: inset 0 0 0 2px #ffd97688; }
   .track-row { display: flex; width: max-content; min-width: 100%;
     align-items: stretch; gap: 8px; }
   .track-heading { position: sticky; left: 0; z-index: 8; width: 88px; flex: 0 0 88px;

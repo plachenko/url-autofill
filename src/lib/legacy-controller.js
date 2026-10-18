@@ -880,17 +880,25 @@ import { createPreviewSplits } from './preview-splits.js';
       try {
         if (tracks.flat().length >= 100)
           throw new Error('The compositor supports up to 100 clips.');
+        const newTrack = target.closest('#add-track-bottom');
         const row = target.closest('.track-row[data-track]');
         const lane = row?.querySelector('.track-lane');
-        if (!lane) throw new Error('Drop the clip on a timeline track.');
-        const track = tracks[Number(lane.dataset.track)];
-        if (!track) throw new Error('That track is no longer available.');
+        if (!lane && !newTrack) throw new Error('Drop the clip on a timeline track.');
+        if (newTrack && tracks.length >= 8)
+          throw new Error('The compositor supports up to 8 tracks.');
+        const track = lane ? tracks[Number(lane.dataset.track)] : null;
+        if (lane && !track) throw new Error('That track is no longer available.');
         const item = await clipDetail(id);
-        const trackIndex = tracks.indexOf(track);
+        if (newTrack && tracks.length >= 8)
+          throw new Error('The compositor supports up to 8 tracks.');
+        const trackIndex = newTrack ? tracks.length : tracks.indexOf(track);
         if (trackIndex < 0) throw new Error('That track is no longer available.');
+        const laneLeft = newTrack ? newTrack.getBoundingClientRect().left + trackLabelWidth
+          : lane.getBoundingClientRect().left;
         const start = Math.min(86400, roundTime(Math.max(0, snappedClipStart(
-          (clientX - lane.getBoundingClientRect().left) / timelineScale, item.duration))));
-        track.push({ id, start });
+          (clientX - laneLeft) / timelineScale, item.duration))));
+        if (newTrack) createTrack();
+        tracks[trackIndex].push({ id, start });
         activeTrack = trackIndex;
         saveTracks();
         void refreshCompositor();
@@ -907,11 +915,14 @@ import { createPreviewSplits } from './preview-splits.js';
         const { src, blob, clientX, target } = event.detail;
         if (tracks.flat().length >= 100)
           throw new Error('The compositor supports up to 100 clips.');
+        const newTrack = target.closest('#add-track-bottom');
+        if (newTrack && tracks.length >= 8)
+          throw new Error('The compositor supports up to 8 tracks.');
         const row = target.closest('.track-row');
-        const trackIndex = row ? Number(row.querySelector('.track-lane')?.dataset.track) : activeTrack;
+        const trackIndex = newTrack ? tracks.length : row ? Number(row.querySelector('.track-lane')?.dataset.track) : activeTrack;
         const lane = row?.querySelector('.track-lane') ||
           trackContent.querySelector(`.track-lane[data-track="${activeTrack}"]`);
-        if (!lane || !Number.isInteger(trackIndex) || !tracks[trackIndex])
+        if ((!lane && !newTrack) || !Number.isInteger(trackIndex) || (!newTrack && !tracks[trackIndex]))
           throw new Error('Choose a track to drop the media on.');
         const base = `media-${Date.now()}`;
         let id = base;
@@ -920,14 +931,20 @@ import { createPreviewSplits } from './preview-splits.js';
           id = `${base}-${suffix}`;
         const result = blob ? await storeReceivedMedia(id, blob, 3) : storeWholeMedia(id, src, 3);
         const details = await clipDetail(id);
+        if (newTrack && tracks.length >= 8)
+          throw new Error('The compositor supports up to 8 tracks.');
+        const destinationIndex = newTrack ? tracks.length : trackIndex;
+        const laneLeft = newTrack ? newTrack.getBoundingClientRect().left + trackLabelWidth
+          : lane.getBoundingClientRect().left;
         const start = Math.min(86400, roundTime(Math.max(0, snappedClipStart(
-          (clientX - lane.getBoundingClientRect().left) / timelineScale, details.duration))));
-        tracks[trackIndex].push({ id, start });
-        activeTrack = trackIndex;
+          (clientX - laneLeft) / timelineScale, details.duration))));
+        if (newTrack) createTrack();
+        tracks[destinationIndex].push({ id, start });
+        activeTrack = destinationIndex;
         saveTracks();
         refreshClipList();
         await refreshCompositor();
-        event.detail.message = `${result} Added to track ${trackIndex + 1} at ${start.toFixed(2)}s.`;
+        event.detail.message = `${result} Added to track ${destinationIndex + 1} at ${start.toFixed(2)}s.`;
         clipMessage(event.detail.message);
       } catch (error) {
         event.detail.message = error.message || 'Could not add the media.';
@@ -1534,6 +1551,17 @@ import { createPreviewSplits } from './preview-splits.js';
       syncCompositionPreview(true);
       compositionFrame = window.requestAnimationFrame(compositionTick);
     });
+    document.addEventListener('keydown', event => {
+      if (event.code !== 'Space' || event.repeat || event.defaultPrevented ||
+          event.ctrlKey || event.metaKey || event.altKey ||
+          document.body.classList.contains('screenplay-mode') ||
+          document.body.classList.contains('minimal') ||
+          !document.getElementById('pointer-overlay')?.hidden ||
+          event.target.closest('input, textarea, select, a, summary, video, audio, [contenteditable], [role="button"], [role="slider"], .timeline-player') ||
+          (event.target.closest('button') && !event.target.matches('button.track-heading:not(.timeline-zoom)'))) return;
+      event.preventDefault();
+      compositionPlay.click();
+    });
     compositionScrubber.addEventListener('input', () => setCompositionTime(Number(compositionScrubber.value)));
     document.getElementById('split-clip').addEventListener('click', () => {
       const at = roundTime(session.playheadSeconds);
@@ -1570,16 +1598,24 @@ import { createPreviewSplits } from './preview-splits.js';
       compositorMessage(`Split ${splittable.length} clip${splittable.length === 1 ? '' : 's'} at ${at.toFixed(2)} seconds.`);
       void refreshCompositor();
     });
-    document.getElementById('add-track').addEventListener('click', () => {
-      if (tracks.length >= 8) { compositorMessage('The compositor supports up to 8 tracks.', true); return; }
-      tracks.push([]);
+    const bottomAddTrack = document.getElementById('add-track-bottom');
+    function createTrack() {
+      const track = [];
+      tracks.push(track);
       activeTrack = tracks.length - 1;
       selectedTracks.clear();
-      selectedTracks.add(tracks[activeTrack]);
-      trackSelectionAnchor = tracks[activeTrack];
+      selectedTracks.add(track);
+      trackSelectionAnchor = track;
+      return track;
+    }
+    function addTrack() {
+      if (tracks.length >= 8) { compositorMessage('The compositor supports up to 8 tracks.', true); return; }
+      createTrack();
       saveTracks();
       void refreshCompositor();
-    });
+    }
+    document.getElementById('add-track').addEventListener('click', addTrack);
+    bottomAddTrack.addEventListener('click', addTrack);
     const deleteTracksButton = document.getElementById('delete-tracks');
     function syncTrackSelection() {
       trackContent.querySelectorAll('.track-row[data-track]').forEach(row => {
@@ -2319,6 +2355,7 @@ import { createPreviewSplits } from './preview-splits.js';
             const maxStart = Math.max(...moving.map(value => value.start));
             const minTrack = Math.min(...moving.map(value => value.track));
             const maxTrack = Math.max(...moving.map(value => value.track));
+            const addedTrackCount = maxTrack - minTrack + 1;
             const x = event.clientX;
             const y = event.clientY;
             const bounds = dragHandle.getBoundingClientRect();
@@ -2342,6 +2379,13 @@ import { createPreviewSplits } from './preview-splits.js';
             let liveTrack = trackIndex;
             let moved = false;
             let highlightedRow = null;
+            const overAddTrack = event => {
+              const bounds = bottomAddTrack.getBoundingClientRect();
+              const viewport = trackList.getBoundingClientRect();
+              return event.clientX >= Math.max(bounds.left, viewport.left) &&
+                event.clientX <= Math.min(bounds.right, viewport.right) &&
+                event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+            };
             const highlightTrack = lane => {
               const row = lane?.closest('.track-row[data-track]') || null;
               if (row === highlightedRow) return;
@@ -2360,6 +2404,24 @@ import { createPreviewSplits } from './preview-splits.js';
                 Math.abs(moveEvent.clientY - y) > 3;
               if (!moved) return;
               ghost.style.transform = `translate(${moveEvent.clientX - x}px, ${moveEvent.clientY - y}px)`;
+              const addingTrack = overAddTrack(moveEvent) && tracks.length + addedTrackCount <= 8;
+              bottomAddTrack.classList.toggle('clip-move-target', addingTrack);
+              if (addingTrack) {
+                highlightTrack(null);
+                moving.forEach(value => {
+                  value.entry.start = value.start;
+                  value.entry.end = value.start + value.duration;
+                  value.entry.track = value.track;
+                  value.entry.tile.style.left = `${Math.round(value.start * timelineScale)}px`;
+                  positionCompactTile(value.entry.compactTile, value.entry.tile);
+                  value.entry.tile.style.removeProperty('transform');
+                  value.entry.compactTile.style.removeProperty('transform');
+                });
+                compositionDuration = Math.max(0, ...compositionItems.map(value => value.end));
+                compositionScrubber.max = String(compositionDuration);
+                syncCompositionPreview(true);
+                return;
+              }
               const targetLane = laneAt(moveEvent.clientY);
               if (!targetLane) { highlightTrack(null); return; }
               liveTrack = Math.max(trackIndex - minTrack,
@@ -2404,6 +2466,7 @@ import { createPreviewSplits } from './preview-splits.js';
               tile.classList.remove('dragging');
               compactTile.classList.remove('dragging');
               highlightTrack(null);
+              bottomAddTrack.classList.remove('clip-move-target');
             };
             const finish = endEvent => {
               if (suppressDragForPinch) { cancel(); return; }
@@ -2416,6 +2479,42 @@ import { createPreviewSplits } from './preview-splits.js';
                 return;
               }
               if (compactDrag) ignoreNextCompactClick();
+              if (overAddTrack(endEvent)) {
+                if (tracks.length + addedTrackCount > 8) {
+                  draggingCollapsedClip = false;
+                  compositorMessage('The compositor supports up to 8 tracks.', true);
+                  void refreshCompositor();
+                  return;
+                }
+                const deltaTrack = tracks.length - minTrack;
+                const rawStart = (endEvent.clientX - grabOffset -
+                  bottomAddTrack.getBoundingClientRect().left - trackLabelWidth) / timelineScale;
+                const newStart = roundTime(Math.max(clip.start - minStart,
+                  Math.min(86400 - maxStart + clip.start,
+                    snappedClipStart(rawStart, entry.duration, entry))));
+                const deltaStart = newStart - clip.start;
+                for (let index = 0; index < addedTrackCount; index++) createTrack();
+                for (const value of moving) {
+                  const sourceTrack = tracks[value.track];
+                  sourceTrack.splice(sourceTrack.indexOf(value.clipRef), 1);
+                }
+                for (const value of moving) {
+                  value.clipRef.start = roundTime(value.start + deltaStart);
+                  tracks[value.track + deltaTrack].push(value.clipRef);
+                }
+                tracks.forEach(track => track.sort((a, b) => a.start - b.start));
+                activeTrack = trackIndex + deltaTrack;
+                selectedTracks.clear();
+                selectedTracks.add(tracks[activeTrack]);
+                trackSelectionAnchor = tracks[activeTrack];
+                if (compactDrag) {
+                  moving.forEach(value => suppressedAutoExpandClipRefs.add(value.clipRef));
+                  draggingCollapsedClip = false;
+                }
+                saveTracks();
+                void refreshCompositor();
+                return;
+              }
               const targetLane = laneAt(endEvent.clientY);
               if (!targetLane) {
                 draggingCollapsedClip = false;
@@ -2553,7 +2652,9 @@ import { createPreviewSplits } from './preview-splits.js';
         row.append(heading, lane);
         trackContent.append(row);
       });
+      trackContent.append(bottomAddTrack);
       syncTrackSelection();
+      bottomAddTrack.disabled = tracks.length >= 8;
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
       setCompositionTime(session.playheadSeconds);
@@ -2619,15 +2720,19 @@ import { createPreviewSplits } from './preview-splits.js';
         const target = document.elementFromPoint(x, y);
         trackContent.querySelectorAll('.clip-library-drop-target').forEach(row =>
           row.classList.remove('clip-library-drop-target'));
+        const newTrack = tracks.length < 8 && Boolean(target?.closest('#add-track-bottom'));
+        bottomAddTrack.classList.toggle('clip-library-drop-target', newTrack);
         const row = target?.closest('#track-list .track-row[data-track]');
         row?.classList.add('clip-library-drop-target');
-        ghost.textContent = row ? `${clip.id} → Track ${Number(row.dataset.track) + 1}` : clip.id;
+        ghost.textContent = newTrack ? `${clip.id} → New track` :
+          row ? `${clip.id} → Track ${Number(row.dataset.track) + 1}` : clip.id;
         document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag',
           { detail: { phase: 'move', clientX: x, clientY: y } }));
       }
       function clearDragHighlight() {
         trackContent.querySelectorAll('.clip-library-drop-target').forEach(row =>
           row.classList.remove('clip-library-drop-target'));
+        bottomAddTrack.classList.remove('clip-library-drop-target');
         document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag',
           { detail: { phase: 'end' } }));
       }
@@ -2641,7 +2746,8 @@ import { createPreviewSplits } from './preview-splits.js';
           return;
         }
         const target = document.elementFromPoint(x, y);
-        if (target && trackList.contains(target) && target.closest('.track-row[data-track]'))
+        if (target && trackList.contains(target) &&
+            (target.closest('.track-row[data-track]') || target.closest('#add-track-bottom')))
           trackList.dispatchEvent(new CustomEvent('library-clip-drop',
             { detail: { id: clip.id, clientX: x, target } }));
         else {
