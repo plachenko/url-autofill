@@ -1,6 +1,7 @@
 export const scenesStorageKey = 'urlAutofill.scenes.v1';
 
-const sceneKeys = ['urlAutofill.v1', 'urlAutofill.compositor.v1', 'urlAutofill.session.v1'];
+const sceneKeys = ['urlAutofill.v1', 'urlAutofill.compositor.v1',
+  'urlAutofill.trackModes.v1', 'urlAutofill.session.v1'];
 const sceneId = () => `scene-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 function sceneName(name) {

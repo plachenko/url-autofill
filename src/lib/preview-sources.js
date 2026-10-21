@@ -1,10 +1,11 @@
 import { visibleCompositionItem } from './composition-visibility.js';
 
-export function previewEntryForSource(source, tracks, items, seconds, selectedClips = new Set()) {
+export function previewEntryForSource(source, tracks, items, seconds,
+  selectedClips = new Set(), trackModes = []) {
   if (source === 'selected') {
     const selected = Array.from(selectedClips).at(-1);
     return selected ? items.find(item => item.clipRef === selected) || null
-      : visibleCompositionItem(items, seconds);
+      : visibleCompositionItem(items, seconds, trackModes);
   }
   const parts = source?.split(':') || [];
   if (parts[0] === 'clip' && parts.length === 3) {

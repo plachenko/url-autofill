@@ -19,6 +19,7 @@ test('scenes keep separate composition state and share project media', () => {
   const saved = storage([
     ['urlAutofill.v1', 'first text'],
     ['urlAutofill.compositor.v1', 'first tracks'],
+    ['urlAutofill.trackModes.v1', '[{"muted":true}]'],
     ['urlAutofill.session.v1', 'first playhead'],
     ['urlAutofill.media.v1.clip.part.1', 'shared image']
   ]);
@@ -28,18 +29,22 @@ test('scenes keep separate composition state and share project media', () => {
   const second = listScenes(saved).activeId;
   assert.equal(saved.getItem('urlAutofill.v1'), null);
   assert.equal(saved.getItem('urlAutofill.compositor.v1'), null);
+  assert.equal(saved.getItem('urlAutofill.trackModes.v1'), null);
   assert.equal(saved.getItem('urlAutofill.media.v1.clip.part.1'), 'shared image');
   saved.setItem('urlAutofill.v1', 'second text');
   saved.setItem('urlAutofill.compositor.v1', 'second tracks');
+  saved.setItem('urlAutofill.trackModes.v1', '[{"solo":true}]');
   switchScene(saved, first);
   assert.equal(saved.getItem('urlAutofill.v1'), 'first text');
   assert.equal(saved.getItem('urlAutofill.compositor.v1'), 'first tracks');
+  assert.equal(saved.getItem('urlAutofill.trackModes.v1'), '[{"muted":true}]');
   assert.equal(saved.getItem('urlAutofill.session.v1'), 'first playhead');
   renameScene(saved, first, 'Opening');
   assert.equal(listScenes(saved).scenes[0].name, 'Opening');
   switchScene(saved, second);
   assert.equal(saved.getItem('urlAutofill.v1'), 'second text');
   assert.equal(saved.getItem('urlAutofill.compositor.v1'), 'second tracks');
+  assert.equal(saved.getItem('urlAutofill.trackModes.v1'), '[{"solo":true}]');
   deleteScene(saved, second);
   assert.equal(saved.getItem('urlAutofill.v1'), 'first text');
   assert.equal(listScenes(saved).scenes.length, 1);

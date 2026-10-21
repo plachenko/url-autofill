@@ -1,11 +1,14 @@
 import { compactParams } from "./url-parameters.js";
-import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, deleteMedia, loadMedia, loadMediaAsync, storeReceivedMedia } from "./media-store.js";
+import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, updatePaletteClip, deleteMedia, loadMedia, loadMediaAsync, storeReceivedMedia } from "./media-store.js";
+import { paletteDefaults, paletteTemplate, paletteDataUri, loadPaletteTemplates,
+  savePaletteTemplates, createPaletteClip } from './palette-objects.js';
 import { clearAllAppStorage, createSessionBackup, restoreSessionBackup } from './app-storage.js';
 import { createProject, deleteProject, listProjects, renameProject, switchProject } from './project-store.js';
 import { createScene, deleteScene, listScenes, renameScene, switchScene } from './scene-store.js';
 import { clearReceivedMedia, exportReceivedMedia, importReceivedMedia } from './received-media.js';
 import { websocketImageDropEvent } from './websocket-image-drag.js';
-import { visibleCompositionItem } from './composition-visibility.js';
+import { audibleCompositionItems, compositionAudioTime, trackIsVisible,
+  visibleCompositionItem } from './composition-visibility.js';
 import { canShowTeslaTheater, teslaTheaterPreferenceEvent,
   teslaTheaterTransferParam } from './tesla-browser.js';
 import { removeSelectedTracks } from './track-selection.js';
@@ -852,6 +855,32 @@ import { createPreviewSplits } from './preview-splits.js';
     const clipStatus = document.getElementById('clip-status');
     const timelineClipsList = document.getElementById('timeline-clips-list');
     const timelineClipsStatus = document.getElementById('timeline-clips-status');
+    const paletteList = document.getElementById('timeline-palette-list');
+    const paletteStatus = document.getElementById('timeline-palette-status');
+    const paletteEditForm = document.getElementById('palette-edit-form');
+    const paletteEditKind = document.getElementById('palette-edit-kind');
+    let editingPaletteId = null;
+    function openPaletteEditor(id) {
+      let meta;
+      try { meta = JSON.parse(window.localStorage.getItem(`${mediaStorageKey(id)}.meta`)); }
+      catch { return false; }
+      if (!meta?.palette) return false;
+      editingPaletteId = id;
+      const palette = meta.palette;
+      document.getElementById('palette-edit-name').textContent = id;
+      paletteEditKind.value = ['color', 'text', 'empty'].includes(palette.kind) ? palette.kind : 'file';
+      document.getElementById('palette-edit-label').value = palette.label || id;
+      document.getElementById('palette-edit-color').value = /^#[0-9a-f]{6}$/i.test(palette.color) ? palette.color : '#ffffff';
+      document.getElementById('palette-edit-text').value = palette.text || '';
+      document.getElementById('palette-edit-seconds').value = String(meta.seconds || 3);
+      document.getElementById('palette-edit-file').value = '';
+      paletteEditForm.hidden = false;
+      syncPaletteFields();
+      window.dispatchEvent(new CustomEvent('openpaletteeditor'));
+      window.requestAnimationFrame(() => paletteEditForm.scrollIntoView({ block: 'nearest' }));
+      paletteMessage(`Editing ${palette.label || id}.`);
+      return true;
+    }
     const timelineImageForm = document.getElementById('timeline-image-form');
     const timelineImageId = document.getElementById('timeline-image-id');
     const timelineImageSource = document.getElementById('timeline-image-source');
@@ -974,7 +1003,7 @@ import { createPreviewSplits } from './preview-splits.js';
     }
     browserZoomToggle.addEventListener('click', () => setBrowserZoom(!browserZoomEnabled));
     setBrowserZoom(browserZoomEnabled);
-    const trackLabelWidth = 96;
+    const trackLabelWidth = 140;
     let trackPlayhead = null;
     let playheadSelected = false;
     document.addEventListener('pointerdown', event => {
@@ -1003,8 +1032,10 @@ import { createPreviewSplits } from './preview-splits.js';
     const compositionError = document.getElementById('composition-error');
     const compositionScrubber = document.getElementById('composition-scrubber');
     const seekWrap = document.getElementById('seek-wrap');
+    const compactLoopRange = document.getElementById('compact-loop-range');
     const compactRenderFrame = document.getElementById('compact-render-frame');
-    const compositionTimeLabel = document.getElementById('composition-time');
+    const playheadTimeLabel = document.getElementById('playhead-time');
+    const loopTimeLabel = document.getElementById('loop-time');
     const compositionPlay = document.getElementById('composition-play');
     const timelineToggle = document.getElementById('timeline-toggle');
     const pinPreviewButton = document.getElementById('pin-preview');
@@ -1045,6 +1076,7 @@ import { createPreviewSplits } from './preview-splits.js';
     });
     syncTimelineLock();
     const compositorKey = 'urlAutofill.compositor.v1';
+    const trackModesKey = 'urlAutofill.trackModes.v1';
     const snapStorageKey = 'urlAutofill.snap.v1';
     let snapEnabled = true;
     try { snapEnabled = window.localStorage.getItem(snapStorageKey) !== '0'; }
@@ -1138,6 +1170,7 @@ import { createPreviewSplits } from './preview-splits.js';
     if (typeof ResizeObserver === 'function') new ResizeObserver(updatePinnedScale).observe(previewHost);
     else window.addEventListener('resize', updatePinnedScale);
     let tracks = [[]];
+    let trackModes = [{ muted: false, solo: false }];
     let activeTrack = 0;
     let compositionItems = [];
     const selectedClips = new Set();
@@ -1163,7 +1196,7 @@ import { createPreviewSplits } from './preview-splits.js';
       layout: document.getElementById('preview-layout'),
       verticalButton: document.getElementById('preview-split-vertical'),
       horizontalButton: document.getElementById('preview-split-horizontal'),
-      getSnapshot: () => ({ tracks, items: compositionItems,
+      getSnapshot: () => ({ tracks, trackModes, items: compositionItems,
         seconds: session.playheadSeconds, locked: session.lockRenderFrame,
         playing: compositionPlaying, activeTrack, selectedClips }),
       resolveImage: id => loadMedia(id),
@@ -1194,15 +1227,16 @@ import { createPreviewSplits } from './preview-splits.js';
     });
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
+    const loopRangeHighlight = document.createElement('div');
+    loopRangeHighlight.className = 'track-loop-range';
+    loopRangeHighlight.setAttribute('aria-hidden', 'true');
+    loopRangeHighlight.hidden = true;
     function positionCompactTile(compactTile, tile) {
       compactTile.style.left = tile.style.left;
       compactTile.style.width = tile.style.width;
     }
     let pendingClipFocus = null;
     const clipDetails = new Map();
-    compositionVideo.addEventListener('ended', () => {
-      if (compositionPlaying && !session.lockRenderFrame) stopComposition();
-    });
     function compositorMessage(text, error = false) {
       message(text, error);
     }
@@ -1248,7 +1282,10 @@ import { createPreviewSplits } from './preview-splits.js';
     }
     const roundTime = seconds => Math.round(seconds * 100) / 100;
     function saveTracks() {
-      try { window.localStorage.setItem(compositorKey, JSON.stringify(tracks)); }
+      try {
+        window.localStorage.setItem(compositorKey, JSON.stringify(tracks));
+        window.localStorage.setItem(trackModesKey, JSON.stringify(trackModes));
+      }
       catch (error) { compositorMessage('Tracks changed, but browser storage could not save the layout.', true); }
     }
     function clipDetail(id) {
@@ -1292,10 +1329,67 @@ import { createPreviewSplits } from './preview-splits.js';
       }
       return clipDetails.get(id);
     }
+    const trackAudioHost = document.createElement('div');
+    trackAudioHost.hidden = true;
+    trackAudioHost.setAttribute('aria-hidden', 'true');
+    document.getElementById('compositor').append(trackAudioHost);
+    const trackAudioVoices = new Map();
+    function disposeTrackAudio() {
+      for (const voice of trackAudioVoices.values()) {
+        voice.video.pause();
+        voice.video.removeAttribute('src');
+        voice.video.remove();
+      }
+      trackAudioVoices.clear();
+    }
+    function syncTrackAudio(seek = false) {
+      const active = audibleCompositionItems(compositionItems,
+        session.playheadSeconds, trackModes);
+      const activeRefs = new Set(active.map(entry => entry.clipRef));
+      for (const [clipRef, voice] of trackAudioVoices) {
+        if (activeRefs.has(clipRef)) continue;
+        voice.video.pause();
+        voice.video.removeAttribute('src');
+        voice.video.remove();
+        trackAudioVoices.delete(clipRef);
+      }
+      for (const entry of active) {
+        let voice = trackAudioVoices.get(entry.clipRef);
+        if (!voice) {
+          const video = document.createElement('video');
+          video.playsInline = true;
+          video.preload = 'auto';
+          video.addEventListener('loadedmetadata', () => {
+            if (trackAudioVoices.get(entry.clipRef)?.video === video)
+              syncTrackAudio(true);
+          });
+          trackAudioHost.append(video);
+          voice = { video, playPending: false, playBlocked: false };
+          trackAudioVoices.set(entry.clipRef, voice);
+          video.src = entry.item.src;
+        }
+        const { video } = voice;
+        if (video.readyState >= 1 && !video.seeking) {
+          const target = compositionAudioTime(entry, session.playheadSeconds);
+          if (Math.abs(video.currentTime - target) > (seek ? .015 : .25))
+            video.currentTime = target;
+        }
+        if (compositionPlaying) {
+          if (video.paused && !voice.playPending && !voice.playBlocked) {
+            voice.playPending = true;
+            void video.play().then(() => { voice.playPending = false; }, () => {
+              voice.playPending = false;
+              voice.playBlocked = true;
+            });
+          }
+        } else if (!video.paused) video.pause();
+      }
+    }
     function stopComposition() {
       compositionPlaying = false;
       window.cancelAnimationFrame(compositionFrame);
       compositionVideo.pause();
+      for (const voice of trackAudioVoices.values()) voice.video.pause();
       compositionPlay.textContent = 'Play';
       saveSession(true);
     }
@@ -1402,7 +1496,8 @@ import { createPreviewSplits } from './preview-splits.js';
       saveSession(true);
     }
     function syncCompositionPreview(seek = false) {
-      const active = visibleCompositionItem(compositionItems, session.playheadSeconds);
+      syncTrackAudio(seek);
+      const active = visibleCompositionItem(compositionItems, session.playheadSeconds, trackModes);
       const expandedRow = shouldAutoExpandTrack(active)
         ? trackContent.querySelector(`.track-row[data-track="${active.track}"]`) : null;
       if (autoExpandedTrackRow !== expandedRow) {
@@ -1499,13 +1594,30 @@ import { createPreviewSplits } from './preview-splits.js';
         renderFrameMarker.style.left = `${Math.max(0, Math.min(markerTile.clientWidth - 2,
           frameOffset * timelineScale))}px`;
       } else renderFrameMarker.remove();
+      loopRangeHighlight.hidden = session.lockRenderFrame || !active;
+      compactLoopRange.hidden = loopRangeHighlight.hidden;
+      seekWrap.classList.toggle('looping', !loopRangeHighlight.hidden);
+      if (!loopRangeHighlight.hidden) {
+        loopRangeHighlight.style.left = `${active.start * timelineScale}px`;
+        loopRangeHighlight.style.width = `${active.duration * timelineScale}px`;
+        compactLoopRange.style.left = `${compositionDuration ?
+          active.start / compositionDuration * 100 : 0}%`;
+        compactLoopRange.style.width = `${compositionDuration ?
+          active.duration / compositionDuration * 100 : 0}%`;
+      }
       compositionScrubber.value = String(session.playheadSeconds);
       compositionScrubber.style.setProperty('--progress', `${compositionDuration ?
         session.playheadSeconds / compositionDuration * 100 : 0}%`);
       seekWrap.style.setProperty('--frame-progress', `${compositionDuration ?
         session.renderFrameSeconds / compositionDuration * 100 : 0}%`);
       compactRenderFrame.hidden = !active;
-      compositionTimeLabel.textContent = `${session.playheadSeconds.toFixed(2)}/${compositionDuration.toFixed(2)}s`;
+      playheadTimeLabel.textContent = `Playhead ${session.playheadSeconds.toFixed(2)} / ${compositionDuration.toFixed(2)}s`;
+      loopTimeLabel.hidden = loopRangeHighlight.hidden;
+      if (!loopTimeLabel.hidden) {
+        const loopTime = Math.max(0, Math.min(active.duration,
+          session.renderFrameSeconds - active.start));
+        loopTimeLabel.textContent = `Loop ${loopTime.toFixed(2)} / ${active.duration.toFixed(2)}s`;
+      }
       compositionScrubber.setAttribute('aria-valuetext', `${session.playheadSeconds.toFixed(2)} of ${compositionDuration.toFixed(2)} seconds`);
       if (trackPlayhead) {
         const x = trackLabelWidth + session.playheadSeconds * timelineScale;
@@ -1545,6 +1657,7 @@ import { createPreviewSplits } from './preview-splits.js';
       if (compositionPlaying) { stopComposition(); syncCompositionPreview(); return; }
       if (!compositionDuration) { compositorMessage('Add a complete clip to a track first.', true); return; }
       if (session.playheadSeconds >= compositionDuration) setCompositionTime(0);
+      for (const voice of trackAudioVoices.values()) voice.playBlocked = false;
       compositionPlaying = true;
       compositionStarted = performance.now() - session.playheadSeconds * 1000;
       compositionPlay.textContent = 'Pause';
@@ -1602,6 +1715,7 @@ import { createPreviewSplits } from './preview-splits.js';
     function createTrack() {
       const track = [];
       tracks.push(track);
+      trackModes.push({ muted: false, solo: false });
       activeTrack = tracks.length - 1;
       selectedTracks.clear();
       selectedTracks.add(track);
@@ -1630,19 +1744,52 @@ import { createPreviewSplits } from './preview-splits.js';
       deleteTracksButton.textContent = selectedTracks.size
         ? `Delete ${selectedTracks.size} track${selectedTracks.size === 1 ? '' : 's'}` : 'Delete tracks';
     }
-    function deleteSelectedTracks() {
-      if (!selectedTracks.size) return;
-      const count = selectedTracks.size;
-      const result = removeSelectedTracks(tracks, selectedTracks, activeTrack);
+    function syncTrackModes() {
+      trackContent.querySelectorAll('.track-row[data-track]').forEach(row => {
+        const index = Number(row.dataset.track);
+        const mode = trackModes[index];
+        row.classList.toggle('track-muted', mode?.muted === true);
+        row.classList.toggle('track-soloed', mode?.solo === true);
+        row.classList.toggle('track-inactive', !trackIsVisible(trackModes, index));
+        for (const [kind, pressed, action] of [
+          ['mute', mode?.muted === true, mode?.muted ? 'Unmute' : 'Mute'],
+          ['solo', mode?.solo === true, mode?.solo ? 'Unsolo' : 'Solo']
+        ]) {
+          const button = row.querySelector(`.track-${kind}`);
+          button?.setAttribute('aria-pressed', String(pressed));
+          button?.setAttribute('aria-label', `${action} track ${index + 1}`);
+          if (button) button.title = `${action} track ${index + 1}`;
+        }
+      });
+    }
+    function toggleTrackMode(trackRef, kind) {
+      const index = tracks.indexOf(trackRef);
+      if (index < 0) return;
+      trackModes[index][kind] = !trackModes[index][kind];
+      saveTracks();
+      syncTrackModes();
+      syncCompositionPreview(true);
+    }
+    function deleteTracks(tracksToDelete) {
+      if (!tracksToDelete.size) return;
+      const count = tracksToDelete.size;
+      const remainingModes = tracks.flatMap((track, index) =>
+        tracksToDelete.has(track) ? [] : [trackModes[index]]);
+      const result = removeSelectedTracks(tracks, tracksToDelete, activeTrack);
       tracks = result.tracks;
+      trackModes = remainingModes.length ? remainingModes : [{ muted: false, solo: false }];
       activeTrack = result.activeIndex;
-      selectedTracks.clear();
-      trackSelectionAnchor = null;
+      for (const track of tracksToDelete) selectedTracks.delete(track);
+      if (tracksToDelete.has(trackSelectionAnchor)) trackSelectionAnchor = null;
       selectedClips.clear();
+      pendingTrackFocus = activeTrack;
       saveTracks();
       syncTrackSelection();
       void refreshCompositor();
       compositorMessage(`Deleted ${count} track${count === 1 ? '' : 's'}.`);
+    }
+    function deleteSelectedTracks() {
+      deleteTracks(new Set(selectedTracks));
     }
     deleteTracksButton.addEventListener('click', deleteSelectedTracks);
     document.getElementById('position-url').addEventListener('click', () => {
@@ -1674,6 +1821,7 @@ import { createPreviewSplits } from './preview-splits.js';
     async function refreshCompositor() {
       const revision = ++compositionRevision;
       stopComposition();
+      disposeTrackAudio();
       disposeImagePreview();
       rulerResizeObserver?.disconnect();
       timelineGestureController?.abort();
@@ -1732,7 +1880,9 @@ import { createPreviewSplits } from './preview-splits.js';
       function moveTrack(from, to) {
         if (from === to || to < 0 || to >= tracks.length) return false;
         const [track] = tracks.splice(from, 1);
+        const [mode] = trackModes.splice(from, 1);
         tracks.splice(to, 0, track);
+        trackModes.splice(to, 0, mode);
         if (activeTrack === from) activeTrack = to;
         else if (from < activeTrack && to >= activeTrack) activeTrack--;
         else if (from > activeTrack && to <= activeTrack) activeTrack++;
@@ -1809,7 +1959,7 @@ import { createPreviewSplits } from './preview-splits.js';
           if (second % labelStep === 0) tick.textContent = `${second}s`;
           ticks.append(tick);
         }
-        rulerLane.replaceChildren(ticks);
+        rulerLane.replaceChildren(ticks, loopRangeHighlight);
       }
       function setTimelineZoom(nextScale, anchorTime, anchorX) {
         nextScale = Math.max(10, Math.min(160, Math.round(nextScale)));
@@ -2016,9 +2166,19 @@ import { createPreviewSplits } from './preview-splits.js';
       ruler.append(rulerLabel, rulerLane);
       trackContent.append(ruler);
       trackList.onscroll = renderRulerTicks;
+      function updatePlayheadExtent() {
+        const rows = trackContent.querySelectorAll('.track-row[data-track]');
+        const last = rows[rows.length - 1];
+        trackContent.style.setProperty('--playhead-track-height',
+          `${last ? last.offsetTop + last.offsetHeight : 0}px`);
+      }
       if (typeof ResizeObserver === 'function') {
-        rulerResizeObserver = new ResizeObserver(renderRulerTicks);
+        rulerResizeObserver = new ResizeObserver(() => {
+          renderRulerTicks();
+          updatePlayheadExtent();
+        });
         rulerResizeObserver.observe(trackList);
+        rulerResizeObserver.observe(trackContent);
       }
       renderRulerTicks();
       const playhead = document.createElement('div');
@@ -2094,6 +2254,27 @@ import { createPreviewSplits } from './preview-splits.js';
         heading.setAttribute('aria-label', `Track ${trackIndex + 1}; tap to select, Shift to select a range, drag to reorder`);
         heading.setAttribute('aria-pressed', String(selectedTracks.has(tracks[trackIndex])));
         heading.title = 'Tap to select this track; drag to reorder';
+        const headingWrap = document.createElement('div');
+        headingWrap.className = 'track-heading-wrap';
+        const muteButton = document.createElement('button');
+        muteButton.type = 'button';
+        muteButton.className = 'track-mode track-mute';
+        muteButton.textContent = 'M';
+        muteButton.addEventListener('click', () => toggleTrackMode(row.trackRef, 'muted'));
+        const soloButton = document.createElement('button');
+        soloButton.type = 'button';
+        soloButton.className = 'track-mode track-solo';
+        soloButton.textContent = 'S';
+        soloButton.addEventListener('click', () => toggleTrackMode(row.trackRef, 'solo'));
+        const removeTrackButton = document.createElement('button');
+        removeTrackButton.type = 'button';
+        removeTrackButton.className = 'track-remove';
+        removeTrackButton.textContent = '×';
+        removeTrackButton.setAttribute('aria-label', `Remove track ${trackIndex + 1}`);
+        removeTrackButton.title = `Remove track ${trackIndex + 1}`;
+        removeTrackButton.addEventListener('click', () =>
+          deleteTracks(new Set([row.trackRef])));
+        headingWrap.append(heading, muteButton, soloButton, removeTrackButton);
         let suppressHeadingClick = false;
         let trackDrag = null;
         heading.addEventListener('click', event => {
@@ -2128,8 +2309,13 @@ import { createPreviewSplits } from './preview-splits.js';
               (event.pointerType === 'touch' && !event.isPrimary)) return;
           suppressHeadingClick = false;
           heading.setPointerCapture(event.pointerId);
+          const marker = document.createElement('div');
+          marker.className = 'track-reorder-marker';
+          marker.setAttribute('aria-hidden', 'true');
+          marker.hidden = true;
+          trackContent.append(marker);
           trackDrag = { id: event.pointerId, startY: event.clientY,
-            target: trackIndex, moved: false };
+            target: trackIndex, moved: false, marker };
         });
         heading.addEventListener('pointermove', event => {
           if (!trackDrag || event.pointerId !== trackDrag.id || suppressDragForPinch) return;
@@ -2144,13 +2330,22 @@ import { createPreviewSplits } from './preview-splits.js';
             return distance < nearest.distance
               ? { index: Number(candidate.dataset.track), distance } : nearest;
           }, { index: trackIndex, distance: Infinity }).index;
+          const destination = rows[trackDrag.target];
+          const reorder = trackDrag.target !== trackIndex;
           rows.forEach(candidate => candidate.classList.toggle('track-drop-target',
-            Number(candidate.dataset.track) === trackDrag.target && trackDrag.target !== trackIndex));
+            candidate === destination && reorder));
+          trackDrag.marker.hidden = !reorder;
+          if (reorder) {
+            const after = trackDrag.target > trackIndex;
+            trackDrag.marker.style.top = `${destination.offsetTop +
+              (after ? destination.offsetHeight + 5 : -5)}px`;
+          }
         });
         const finishTrackDrag = event => {
           if (!trackDrag || event.pointerId !== trackDrag.id) return;
-          const { moved, target } = trackDrag;
+          const { moved, target, marker } = trackDrag;
           trackDrag = null;
+          marker.remove();
           heading.style.removeProperty('transform');
           row.classList.remove('track-dragging');
           trackContent.querySelectorAll('.track-drop-target').forEach(candidate =>
@@ -2175,6 +2370,9 @@ import { createPreviewSplits } from './preview-splits.js';
           const item = trackDetails[trackIndex][clipIndex];
           if (!item) return;
           const id = clip.id;
+          let displayName = id;
+          try { displayName = JSON.parse(window.localStorage.getItem(`${mediaStorageKey(id)}.meta`))?.palette?.label || id; }
+          catch { /* Keep the clip ID when metadata is damaged. */ }
           const tile = document.createElement('div');
           tile.className = 'clip-tile';
           if (appearance) tile.style.opacity = appearance.fullOpacity;
@@ -2191,7 +2389,7 @@ import { createPreviewSplits } from './preview-splits.js';
           if (appearance) compactTile.style.opacity = appearance.compactOpacity;
           const compactContent = document.createElement('span');
           compactContent.className = 'collapsed-clip-content';
-          compactContent.textContent = id;
+          compactContent.textContent = displayName;
           compactTile.append(compactContent);
           compactTile.title = `${id}: ${clip.start.toFixed(2)}s, ${entry.duration.toFixed(2)}s long`;
           compactTile.classList.toggle('selected', selectedClips.has(clipRef));
@@ -2206,6 +2404,7 @@ import { createPreviewSplits } from './preview-splits.js';
           };
           const selectCompactClip = () => {
             if (suppressCompactClick) { suppressCompactClick = false; return; }
+            if (openPaletteEditor(id)) return;
             if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
             else selectedClips.add(clipRef);
             syncSelection();
@@ -2252,7 +2451,7 @@ import { createPreviewSplits } from './preview-splits.js';
             image.src = item.src;
           }
           const name = document.createElement('strong');
-          name.textContent = id;
+          name.textContent = displayName;
           const length = document.createElement('small');
           length.textContent = `${entry.duration.toFixed(2)}s`;
           const select = document.createElement('button');
@@ -2475,7 +2674,7 @@ import { createPreviewSplits } from './preview-splits.js';
                 if (compactDrag) {
                   draggingCollapsedClip = false;
                   syncCompositionPreview(true);
-                }
+                } else openPaletteEditor(id);
                 return;
               }
               if (compactDrag) ignoreNextCompactClick();
@@ -2550,6 +2749,11 @@ import { createPreviewSplits } from './preview-splits.js';
             dragHandle.addEventListener('pointercancel', cancel);
           };
           grip.addEventListener('pointerdown', startClipDrag);
+          grip.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            openPaletteEditor(id);
+          });
           compactTile.addEventListener('pointerdown', startClipDrag);
           function makeTrimHandle(edge) {
             const handle = document.createElement('div');
@@ -2649,11 +2853,13 @@ import { createPreviewSplits } from './preview-splits.js';
           tile.append(thumbnail, name, length, grip, leftTrim, rightTrim, select, remove);
           lane.append(tile, compactTile);
         });
-        row.append(heading, lane);
+        row.append(headingWrap, lane);
         trackContent.append(row);
       });
       trackContent.append(bottomAddTrack);
+      updatePlayheadExtent();
       syncTrackSelection();
+      syncTrackModes();
       bottomAddTrack.disabled = tracks.length >= 8;
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
@@ -2831,7 +3037,249 @@ import { createPreviewSplits } from './preview-splits.js';
       }, { passive: true });
       return card;
     }
+    function paletteMessage(text, error = false) {
+      paletteStatus.textContent = text;
+      paletteStatus.classList.toggle('error', error);
+    }
+    function clearPaletteDrag(endPreview = true) {
+      trackContent.querySelectorAll('.clip-library-drop-target').forEach(row =>
+        row.classList.remove('clip-library-drop-target'));
+      bottomAddTrack.classList.remove('clip-library-drop-target');
+      if (endPreview) document.getElementById('preview-layout')?.dispatchEvent(
+        new CustomEvent('preview-clip-pointer-drag', { detail: { phase: 'end' } }));
+    }
+    function paletteDragAt(ghost, item, x, y) {
+      ghost.style.left = `${x + 12}px`;
+      ghost.style.top = `${y + 12}px`;
+      const target = document.elementFromPoint(x, y);
+      clearPaletteDrag(false);
+      const newTrack = tracks.length < 8 && Boolean(target?.closest('#add-track-bottom'));
+      bottomAddTrack.classList.toggle('clip-library-drop-target', newTrack);
+      const row = target?.closest('#track-list .track-row[data-track]');
+      row?.classList.add('clip-library-drop-target');
+      ghost.textContent = newTrack ? `${item.label} → New track` :
+        row ? `${item.label} → Track ${Number(row.dataset.track) + 1}` : item.label;
+      document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag',
+        { detail: { phase: 'move', clientX: x, clientY: y } }));
+    }
+    function placePaletteItem(item, x, y) {
+      const target = document.elementFromPoint(x, y);
+      const trackTarget = target && trackList.contains(target) &&
+        (target.closest('.track-row[data-track]') || target.closest('#add-track-bottom'));
+      const previewTarget = target?.closest('#preview-layout .preview-view');
+      if (!trackTarget && !previewTarget) {
+        paletteMessage('Drop the object on a timeline track or preview view.', true);
+        return;
+      }
+      try {
+        if (tracks.flat().length >= 100 && trackTarget)
+          throw new Error('The compositor supports up to 100 clips.');
+        if (target.closest('#add-track-bottom') && tracks.length >= 8)
+          throw new Error('The compositor supports up to 8 tracks.');
+        const id = createPaletteClip(item);
+        refreshClipList();
+        if (previewTarget) {
+          const detail = { phase: 'drop', clientX: x, clientY: y, id, handled: false };
+          document.getElementById('preview-layout')?.dispatchEvent(new CustomEvent('preview-clip-pointer-drag', { detail }));
+          paletteMessage(detail.handled ? `Opened ${item.label} in a preview view.` :
+            `Saved ${id}. Choose a preview target or drag it from Clips.`);
+        } else {
+          trackList.dispatchEvent(new CustomEvent('library-clip-drop',
+            { detail: { id, clientX: x, target } }));
+          paletteMessage(`Placed ${item.label} on the timeline.`);
+        }
+      } catch (error) { paletteMessage(error.message || 'Could not add the object.', true); }
+    }
+    function makePaletteCard(item, customIndex = null) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'palette-card';
+      card.setAttribute('aria-label', `Drag ${item.label} to a track, or tap to add it to the active track`);
+      const swatch = document.createElement('span');
+      swatch.className = 'palette-swatch';
+      swatch.style.setProperty('--palette-color', item.kind === 'empty' ? '#263040' :
+        item.kind === 'text' ? '#10151e' : item.color);
+      const label = document.createElement('span');
+      label.className = 'palette-card-label';
+      label.textContent = `${item.label} · ${item.kind}`;
+      card.append(swatch, label);
+      let suppressClick = false;
+      card.addEventListener('click', () => {
+        if (suppressClick) { suppressClick = false; return; }
+        try {
+          const id = createPaletteClip(item);
+          refreshClipList();
+          void addClipToTrack(id);
+          paletteMessage(`Added ${item.label} to the active track.`);
+        } catch (error) { paletteMessage(error.message || 'Could not add the object.', true); }
+      });
+      const makeGhost = () => {
+        suppressClick = true;
+        const ghost = document.createElement('div');
+        ghost.className = 'clip-library-ghost';
+        ghost.textContent = item.label;
+        document.body.append(ghost);
+        return ghost;
+      };
+      card.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
+        card.setPointerCapture(event.pointerId);
+        const origin = { x: event.clientX, y: event.clientY };
+        let ghost = null;
+        const move = value => {
+          if (value.pointerId !== event.pointerId) return;
+          if (!ghost && Math.hypot(value.clientX - origin.x, value.clientY - origin.y) < 6) return;
+          if (!ghost) ghost = makeGhost();
+          value.preventDefault();
+          paletteDragAt(ghost, item, value.clientX, value.clientY);
+        };
+        const end = value => {
+          if (value.pointerId !== event.pointerId) return;
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', end);
+          window.removeEventListener('pointercancel', end);
+          ghost?.remove();
+          if (ghost && value.type === 'pointerup') placePaletteItem(item, value.clientX, value.clientY);
+          clearPaletteDrag();
+          window.setTimeout(() => { suppressClick = false; }, 0);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+      });
+      card.addEventListener('touchstart', event => {
+        if (event.touches.length !== 1) return;
+        const start = event.touches[0];
+        const touchId = start.identifier;
+        let ghost = null;
+        let hold = window.setTimeout(() => {
+          hold = 0;
+          ghost = makeGhost();
+          paletteDragAt(ghost, item, start.clientX, start.clientY);
+        }, 300);
+        const matching = changed => Array.from(changed).find(value => value.identifier === touchId);
+        const cleanup = () => {
+          window.clearTimeout(hold);
+          window.removeEventListener('touchmove', move);
+          window.removeEventListener('touchend', end);
+          window.removeEventListener('touchcancel', end);
+        };
+        const move = value => {
+          const touch = matching(value.changedTouches);
+          if (!touch) return;
+          if (!ghost) {
+            if (Math.hypot(touch.clientX - start.clientX, touch.clientY - start.clientY) > 8) cleanup();
+            return;
+          }
+          value.preventDefault();
+          paletteDragAt(ghost, item, touch.clientX, touch.clientY);
+        };
+        const end = value => {
+          const touch = matching(value.changedTouches);
+          if (!touch) return;
+          cleanup();
+          if (!ghost) return;
+          value.preventDefault();
+          ghost.remove();
+          if (value.type === 'touchend') placePaletteItem(item, touch.clientX, touch.clientY);
+          clearPaletteDrag();
+          window.setTimeout(() => { suppressClick = false; }, 500);
+        };
+        window.addEventListener('touchmove', move, { passive: false });
+        window.addEventListener('touchend', end, { passive: false });
+        window.addEventListener('touchcancel', end);
+      }, { passive: true });
+      if (customIndex === null) return card;
+      const row = document.createElement('div');
+      row.className = 'palette-custom-row';
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'palette-custom-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `Remove ${item.label} from Palette`);
+      remove.addEventListener('click', () => {
+        try {
+          const templates = loadPaletteTemplates(window.localStorage);
+          templates.splice(customIndex, 1);
+          savePaletteTemplates(window.localStorage, templates);
+          refreshPalettePanel();
+        } catch (error) { paletteMessage(error.message || 'Could not remove the object.', true); }
+      });
+      row.append(card, remove);
+      return row;
+    }
+    function refreshPalettePanel() {
+      paletteList.replaceChildren();
+      paletteDefaults.forEach(item => paletteList.append(makePaletteCard(item)));
+      loadPaletteTemplates(window.localStorage).forEach((item, index) =>
+        paletteList.append(makePaletteCard(item, index)));
+    }
+    function syncPaletteFields() {
+      const kind = paletteEditKind.value;
+      for (const field of ['color', 'text', 'file']) {
+        const input = document.getElementById(`palette-edit-${field}`);
+        const visible = field === 'color' ? kind === 'color' || kind === 'text' : kind === field;
+        input.hidden = !visible;
+        document.querySelector(`label[for="palette-edit-${field}"]`).hidden = !visible;
+      }
+    }
+    paletteEditKind.addEventListener('change', syncPaletteFields);
+    syncPaletteFields();
+    document.getElementById('palette-add-form').addEventListener('submit', event => {
+      event.preventDefault();
+      try {
+        const item = paletteTemplate({ kind: document.getElementById('palette-new-kind').value,
+          label: document.getElementById('palette-new-label').value,
+          color: '#4472c4', text: 'Your text', seconds: 3 });
+        savePaletteTemplates(window.localStorage,
+          [...loadPaletteTemplates(window.localStorage), item]);
+        refreshPalettePanel();
+        paletteMessage(`Added ${item.label} to Palette.`);
+      } catch (error) { paletteMessage(error.message || 'Could not add the object.', true); }
+    });
+    paletteEditForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const id = editingPaletteId;
+      if (!id) return;
+      try {
+        const kind = paletteEditKind.value;
+        const seconds = Number(document.getElementById('palette-edit-seconds').value);
+        const label = document.getElementById('palette-edit-label').value.trim();
+        const color = document.getElementById('palette-edit-color').value;
+        const text = document.getElementById('palette-edit-text').value;
+        let dataUri;
+        let palette;
+        if (kind === 'file') {
+          const file = document.getElementById('palette-edit-file').files[0];
+          if (file) {
+            if (!validMime(file.type)) throw new Error('Choose an image or video file.');
+            dataUri = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error || new Error('Could not read the file.'));
+              reader.readAsDataURL(file);
+            });
+          } else {
+            const meta = JSON.parse(window.localStorage.getItem(`${mediaStorageKey(id)}.meta`));
+            if (meta.palette.kind !== 'file') throw new Error('Choose an image or video file.');
+            dataUri = loadMedia(id).src;
+          }
+          if (!label) throw new Error('Enter an object name.');
+          palette = { kind, label: label.slice(0, 48), color, text: '', seconds };
+        } else {
+          palette = paletteTemplate({ kind, label, color, text, seconds });
+          dataUri = paletteDataUri(palette);
+        }
+        paletteMessage(updatePaletteClip(id, dataUri, palette, seconds));
+        tracks.flat().filter(clip => clip.id === id).forEach(clip => { clip.duration = seconds; });
+        saveTracks();
+        clipDetails.delete(id);
+        refreshClipList();
+        void refreshCompositor();
+      } catch (error) { paletteMessage(error.message || 'Could not update the object.', true); }
+    });
     function refreshClipList() {
+      refreshPalettePanel();
       clipList.replaceChildren();
       timelineImageList.replaceChildren();
       timelineClipsList.replaceChildren();
@@ -3252,13 +3700,26 @@ import { createPreviewSplits } from './preview-splits.js';
         const savedTracks = JSON.parse(window.localStorage.getItem(compositorKey));
         tracks = validTracks(savedTracks) ? savedTracks : [[]];
       } catch (error) { tracks = [[]]; }
+      try {
+        const savedModes = JSON.parse(window.localStorage.getItem(trackModesKey));
+        trackModes = tracks.map((_, index) => ({
+          muted: savedModes?.[index]?.muted === true,
+          solo: savedModes?.[index]?.solo === true
+        }));
+      } catch (error) {
+        trackModes = tracks.map(() => ({ muted: false, solo: false }));
+      }
       if (params.has('tr')) {
         const fromUrl = params.get('tr').split('|').map(track => track ? track.split(',').map(value => {
           const match = value.match(/^([a-zA-Z0-9_-]{1,64})@(\d+(?:\.\d+)?)(?:~(\d+(?:\.\d+)?)~(\d+(?:\.\d+)?))?$/);
           return match ? { id: match[1], start: Number(match[2]),
             ...(match[3] === undefined ? {} : { sourceStart: Number(match[3]), duration: Number(match[4]) }) } : null;
         }) : []);
-        if (validTracks(fromUrl)) { tracks = fromUrl; saveTracks(); }
+        if (validTracks(fromUrl)) {
+          tracks = fromUrl;
+          trackModes = tracks.map(() => ({ muted: false, solo: false }));
+          saveTracks();
+        }
         else {
           compositorMessage('The URL contains an invalid track layout.', true);
           message('The URL contains an invalid track layout.', true);

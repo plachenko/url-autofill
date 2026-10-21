@@ -62,6 +62,38 @@ export function storeWholeMedia(id, dataUri, seconds) {
   }
   return `Saved ${id} (${mime}).`;
 }
+
+export function updatePaletteClip(id, dataUri, palette, seconds) {
+  if (!validMediaId(id)) throw new Error('Choose a Palette object.');
+  if (!Number.isFinite(seconds) || seconds < .1 || seconds > 3600)
+    throw new Error('Duration must be between 0.1 and 3600 seconds.');
+  const base = mediaStorageKey(id);
+  const key = `${base}.meta`;
+  const original = window.localStorage.getItem(key);
+  let meta;
+  try { meta = JSON.parse(original); } catch { /* Report below. */ }
+  if (!meta?.palette || meta.total !== 1 || meta.storage)
+    throw new Error('That clip is not an editable Palette object.');
+  const match = String(dataUri).trim().match(/^data:((?:image|video)\/[a-z0-9.+-]+);base64,([\s\S]+)$/i);
+  if (!match) throw new Error('Choose an image or video, or enter color or text.');
+  const encoded = match[2].replaceAll(' ', '+').replace(/[\r\n\t]/g, '');
+  if (!/^[a-zA-Z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1 ||
+      (encoded.includes('=') && encoded.length % 4 !== 0)) throw new Error('The object data is invalid.');
+  const partKey = `${base}.part.1`;
+  const previousPart = window.localStorage.getItem(partKey);
+  try {
+    window.localStorage.setItem(partKey, encoded);
+    window.localStorage.setItem(key, JSON.stringify({ ...meta, mime: match[1].toLowerCase(),
+      seconds, palette }));
+  } catch (error) {
+    if (previousPart === null) window.localStorage.removeItem(partKey);
+    else window.localStorage.setItem(partKey, previousPart);
+    if (original === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, original);
+    throw error;
+  }
+  return `Updated ${id}.`;
+}
 export function deleteMedia(id) {
   if (!validMediaId(id)) throw new Error('Invalid media ID to delete.');
   const base = mediaStorageKey(id);

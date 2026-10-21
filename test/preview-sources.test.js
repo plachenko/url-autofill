@@ -13,6 +13,10 @@ test('a track view shows its active clip and a clip view keeps its chosen clip',
   assert.equal(previewEntryForSource('track:1', clips, items, 3), items[2]);
   assert.equal(previewEntryForSource('clip:0:0', clips, items, 3), items[0]);
   assert.equal(previewEntryForSource('selected', clips, items, 3, new Set([clips[0][0]])), items[0]);
+  assert.equal(previewEntryForSource('selected', clips, items, 3, new Set(),
+    [{ muted: true }, {}]), items[2]);
+  assert.equal(previewEntryForSource('track:0', clips, items, 3, new Set(),
+    [{ muted: true }, {}]), items[1]);
   assert.equal(previewEntryForSource('track:0', clips, items, 6), null);
 });
 

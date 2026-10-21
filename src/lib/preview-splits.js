@@ -349,7 +349,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   }
 
   function sync(seek = false) {
-    const { tracks, items, seconds, locked, playing, selectedClips } = getSnapshot();
+    const { tracks, items, seconds, locked, playing, selectedClips, trackModes } = getSnapshot();
     let needsLoop = false;
     for (const view of views) {
       if (view === primary) continue;
@@ -374,7 +374,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
         state.empty.hidden = !state.droppedImageFailed;
         continue;
       }
-      const entry = previewEntryForSource(source, tracks, items, seconds, selectedClips);
+      const entry = previewEntryForSource(source, tracks, items, seconds, selectedClips, trackModes);
       const clipRef = entry?.clipRef || null;
       if (clipRef !== state.clipRef) {
         state.clipRef = clipRef;
