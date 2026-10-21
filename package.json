@@ -1,5 +1,6 @@
 {
   "name": "url-autofill",
+  "version": "0.8.1",
   "private": true,
   "type": "module",
   "scripts": {

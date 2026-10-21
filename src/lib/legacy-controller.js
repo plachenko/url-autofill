@@ -3626,12 +3626,19 @@ import { createPreviewSplits } from './preview-splits.js';
       toast.timer = window.setTimeout(() => { element.hidden = true; }, 3500);
     }
     let pendingFullscreen = null;
+    let previousRenderFocus = null;
     function viewFocus(kind) {
+      if (kind && previousRenderFocus === null) previousRenderFocus = renderFocus;
       document.body.classList.remove('action-focus-render', 'action-focus-timeline');
+      if (!kind && previousRenderFocus !== null) {
+        setRenderFocus(previousRenderFocus);
+        previousRenderFocus = null;
+      }
       if (kind === 'render' && renderFocus === false) setRenderFocus(true);
       if (kind === 'timeline' && renderFocus === true) setRenderFocus(false);
-      if (kind) document.body.classList.add(`action-focus-${kind}`);
-      const target = kind && document.querySelector(kind === 'render' ? '.stage-pane' : '.timeline-pane');
+      if (kind === 'timeline') document.body.classList.add('action-focus-timeline');
+      // Fullscreen the page so render focus keeps its existing timeline controls.
+      const target = kind && document.documentElement;
       pendingFullscreen = target || null;
       if (target) {
         const request = requestFullscreen(target);

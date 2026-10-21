@@ -271,7 +271,8 @@
       const active = timelinePane?.getSize() >= 99;
       syncPictureInPicture(active);
     });
-    if (!document.body.classList.contains("render-focus"))
+    if (!document.body.classList.contains("render-focus") &&
+        !document.body.classList.contains("action-focus-timeline"))
       document.getElementById("timeline-toggle")?.click();
     return () => {
       cancelAnimationFrame(pipInitFrame);
@@ -300,7 +301,7 @@
 </script>
 
 <svelte:head>
-  <title>URL Autofill · v0.8.0</title>
+  <title>URL Autofill · v0.8.1</title>
 </svelte:head>
 
 <ControlsDrawer />
