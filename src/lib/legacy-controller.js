@@ -1,4 +1,5 @@
 import { compactParams } from "./url-parameters.js";
+import { createActionRegistry, parseTime } from "./url-actions.js";
 import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, updatePaletteClip, deleteMedia, loadMedia, loadMediaAsync, storeReceivedMedia } from "./media-store.js";
 import { paletteDefaults, paletteTemplate, paletteDataUri, loadPaletteTemplates,
   savePaletteTemplates, createPaletteClip } from './palette-objects.js';
@@ -1375,11 +1376,16 @@ import { createPreviewSplits } from './preview-splits.js';
             video.currentTime = target;
         }
         if (compositionPlaying) {
+          video.muted = window.urlAutofillMuted === true;
           if (video.paused && !voice.playPending && !voice.playBlocked) {
             voice.playPending = true;
             void video.play().then(() => { voice.playPending = false; }, () => {
               voice.playPending = false;
-              voice.playBlocked = true;
+              if (!video.muted) {
+                // Autoplay with sound was blocked: fall back to muted playback until a tap.
+                window.urlAutofillMuted = true;
+                window.dispatchEvent(new CustomEvent('urlAutofill:soundBlocked'));
+              } else voice.playBlocked = true;
             });
           }
         } else if (!video.paused) video.pause();
@@ -3606,19 +3612,93 @@ import { createPreviewSplits } from './preview-splits.js';
       timer = ticker = null;
       waiting.hidden = true;
     }
+    function toast(text) {
+      let element = document.getElementById('action-toast');
+      if (!element) {
+        element = document.createElement('div');
+        element.id = 'action-toast';
+        element.setAttribute('role', 'status');
+        document.body.append(element);
+      }
+      element.textContent = text;
+      element.hidden = false;
+      window.clearTimeout(toast.timer);
+      toast.timer = window.setTimeout(() => { element.hidden = true; }, 3500);
+    }
+    let pendingFullscreen = null;
+    function viewFocus(kind) {
+      document.body.classList.remove('action-focus-render', 'action-focus-timeline');
+      if (kind === 'render' && renderFocus === false) setRenderFocus(true);
+      if (kind === 'timeline' && renderFocus === true) setRenderFocus(false);
+      if (kind) document.body.classList.add(`action-focus-${kind}`);
+      const target = kind && document.querySelector(kind === 'render' ? '.stage-pane' : '.timeline-pane');
+      pendingFullscreen = target || null;
+      if (target) {
+        const request = requestFullscreen(target);
+        // Without a user gesture this is usually rejected; retry on the first tap or key.
+        if (request) void Promise.resolve(request.call(target)).then(() => { pendingFullscreen = null; }, () => {});
+      } else if (fullscreenElement()) void changeFullscreen(null);
+    }
+    const tryPendingFullscreen = () => {
+      const target = pendingFullscreen;
+      pendingFullscreen = null;
+      if (target && fullscreenElement() !== target) void changeFullscreen(target);
+      if (window.urlAutofillMuted === 'auto') setMuted(false);
+    };
+    document.addEventListener('pointerdown', tryPendingFullscreen, true);
+    document.addEventListener('keydown', tryPendingFullscreen, true);
+    function setMuted(muted) {
+      window.urlAutofillMuted = muted;
+      for (const voice of trackAudioVoices.values()) voice.video.muted = muted === true || muted === 'auto';
+    }
+    window.addEventListener('urlAutofill:soundBlocked', () => {
+      window.urlAutofillMuted = 'auto';
+      toast('Sound blocked by the browser. Playing muted. Tap to unmute.');
+    });
+    function play() {
+      if (!compositionPlaying) compositionPlay.click();
+    }
+    // Action registry: add a new action with one line, `name: { aliases: [...], run(args) {...} }`.
+    const registry = createActionRegistry({
+      render: () => actions.render(),
+      clear: () => actions.clear(),
+      speak: () => actions.speak(),
+      upper: () => actions.upper(),
+      'fullscreen render': { aliases: ['fullscreen', 'focus render', 'render fullscreen'], run: () => viewFocus('render') },
+      'focus timeline': { aliases: ['fullscreen timeline', 'timeline fullscreen'], run: () => viewFocus('timeline') },
+      'exit fullscreen': { aliases: ['exit focus', 'unfocus'], run: () => viewFocus(null) },
+      play: { aliases: ['resume', 'start'], run: play },
+      pause: { aliases: ['stop'], run: () => { if (compositionPlaying) compositionPlay.click(); } },
+      'toggle play': { aliases: ['play pause'], run: () => compositionPlay.click() },
+      mute: () => setMuted(true),
+      unmute: () => setMuted(false),
+      seek: { aliases: ['skip', 'jump', 'go', 'goto', 'playhead'], run: args => {
+        const seconds = parseTime(args);
+        if (seconds === null) toast(`Could not read time "${args}". Use hh:mm:ss, mm:ss, or seconds.`);
+        else setCompositionTime(seconds);
+      } },
+      restart: { aliases: ['rewind'], run: () => setCompositionTime(0) }
+    });
     function run(name) {
       stopWaiting();
-      name = name.trim().toLowerCase();
-      if (!Object.prototype.hasOwnProperty.call(actions, name)) {
-        message(`Unknown action "${name}". Choose render, clear, speak, or upper.`, true);
-        return;
-      }
-      memoryState.lastAction = name;
-      memoryState.lastUpdated = new Date().toISOString();
-      saveMemory();
-      try { actions[name](); }
-      catch (error) { message('The action could not run. Please try a manual Run button.', true); }
+      const unknown = [];
+      try {
+        const { ran } = registry.run(String(name), input => unknown.push(input));
+        if (ran.length) {
+          memoryState.lastAction = ran.join(';');
+          memoryState.lastUpdated = new Date().toISOString();
+          saveMemory();
+        }
+      } catch (error) { message('The action could not run. Please try a manual Run button.', true); }
+      if (unknown.length) toast(`Unknown action: ${unknown.join(', ')}`);
     }
+    window.urlAutofill = Object.assign(window.urlAutofill || {}, {
+      run, actions: () => registry.names(), define: (actionName, definition) => registry.define(actionName, definition)
+    });
+    window.addEventListener('hashchange', () => {
+      const match = window.location.hash.match(/^#(?:a|action)=(.+)$/);
+      if (match) run(decodeURIComponent(match[1]));
+    });
     document.querySelectorAll('[data-action]').forEach(button => {
       button.addEventListener('click', () => run(button.dataset.action));
     });
@@ -3737,15 +3817,15 @@ import { createPreviewSplits } from './preview-splits.js';
       refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
       if (params.has('a') || params.get('sp') === '1') {
-        const name = params.has('a') ? params.get('a').trim().toLowerCase() : 'speak';
+        const name = params.has('a') ? params.get('a').trim() : 'speak';
         const execute = () => {
           run(name);
-          if (params.get('sp') === '1' && name !== 'speak') run('speak');
+          if (params.get('sp') === '1' && !registry.parse(name).some(command => command.name === 'speak')) run('speak');
         };
         const number = Number(params.get('w'));
         const seconds = Number.isFinite(number) && number >= 0 ? Math.min(number, 3600) : 0;
         const milliseconds = seconds * 1000;
-        if (!Object.prototype.hasOwnProperty.call(actions, name) || milliseconds === 0) {
+        if (!registry.parse(name).some(command => command.name) || milliseconds === 0) {
           execute();
         } else {
           const deadline = Date.now() + milliseconds;

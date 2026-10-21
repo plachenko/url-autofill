@@ -57,7 +57,7 @@
     <button type="button" data-mode="e">Editor mode</button>
     <button type="button" data-mode="sp">Screenplay mode</button>
   </div>
-  <header><h1>URL Autofill</h1><span class="version">v0.7.0</span></header>
+  <header><h1>URL Autofill</h1><span class="version">v0.8.0</span></header>
   <details class="browser-debug">
     <summary>Browser debug</summary>
     <p>Tesla browser detected: {teslaBrowser ? 'Yes' : 'No'}</p>

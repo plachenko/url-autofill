@@ -874,3 +874,14 @@ body.minimal .stage-pane, body.screenplay-mode .stage-pane { flex: 1 1 100% !imp
 body.render-focus .pane-resizer { display: none; }
 body.render-focus .page-layout-preview .pane-resizer { display: block; }
 }
+
+/* URL/voice action focus fallback when the Fullscreen API needs a user gesture. */
+body.action-focus-render .stage-pane,
+body.action-focus-timeline .timeline-pane {
+  position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
+  max-width: none !important; max-height: none !important; flex: none !important; z-index: 9000;
+}
+#action-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10000;
+  background: rgba(0,0,0,.85); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 14px;
+  pointer-events: none; max-width: 90vw; }
+#action-toast[hidden] { display: none; }

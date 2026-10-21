@@ -300,7 +300,7 @@
 </script>
 
 <svelte:head>
-  <title>URL Autofill · v0.7.0</title>
+  <title>URL Autofill · v0.8.0</title>
 </svelte:head>
 
 <ControlsDrawer />

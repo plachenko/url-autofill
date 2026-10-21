@@ -1,5 +1,5 @@
 <details>
-    <summary>Help / About · v0.7.0</summary>
+    <summary>Help / About · v0.8.0</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
       <li>Clear saved data in the menu removes this app's clips, tracks, text, memory, pane sizes, and preferences from this browser after confirmation.</li>
@@ -27,6 +27,7 @@
       <li>Lock stops clip dragging and trimming so dragging the track area pans the timeline. The lock turns on during a two-finger timeline gesture and returns to your chosen setting when both fingers lift.</li>
       <li>Expand Tracks and use −, +, or a two-finger pinch to zoom the timeline. Drag the pane divider to the top to float the render preview over the timeline. Drag the floating preview to move it, pinch it to resize, or drop it on the highlighted line at the top of the timeline to return it to the pane layout. Use Splits in either preview mode to switch between split views and the render result; the floating preview's ↗ button also returns it. The ruler marks the full bar in seconds; when the red frame line loops, a translucent red strip at the top marks that clip's length. The scale is saved in this browser. The menu's Browser zoom setting restores normal browser pinch zoom in the track area.</li>
       <li><code>a</code>: runs <code>render</code>, <code>clear</code>, <code>speak</code>, or <code>upper</code>.</li>
+      <li><code>a</code> also accepts free-form commands, chained with <code>;</code> or <code>,</code>: <code>fullscreen</code> (render fills the screen), <code>focus timeline</code>, <code>exit fullscreen</code>, <code>play</code>, <code>pause</code>, <code>mute</code>, <code>unmute</code>, <code>restart</code>, and <code>seek 1:30</code> / <code>skip to 00:01:30</code> / <code>seek=90</code>. Case, dashes, and the words “to”/“the” are ignored. Browsers need a tap for real fullscreen and sound, so the view fills the window first and fullscreen starts on your first tap or key; blocked sound plays muted until you tap. Unknown commands show a short notice. At runtime use <code>window.urlAutofill.run('skip to 1:30')</code> or <code>#a=play</code>.</li>
       <li><code>a=speak</code>: speaks the reply, or the user text when the reply is empty, with word highlighting.</li>
       <li><code>sp=1</code>: automatically speaks after load and any delay. In minimal mode, tap anywhere to restart speech.</li>
       <li><code>memory</code>: saves memory across page loads; an empty value clears memory. Older <code>m=</code> memory links still work except the mode values above.</li>

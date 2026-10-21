@@ -1,6 +1,6 @@
 # URL Autofill
 
-Car-browser helper page (v0.7.0), built with SvelteKit and `adapter-static`. Open with query params, for example:
+Car-browser helper page (v0.8.0), built with SvelteKit and `adapter-static`. Open with query params, for example:
 
 `https://plachenko.github.io/url-autofill/?t=hi&r=hello&a=speak`
 
@@ -91,3 +91,32 @@ For stepped recording from the browser, choose **Auto Keyframe** in the pointer 
 Use **Axis lock** below the pointer controls to choose Free or constrain movement to X, Y, or Z on the active plane. Axes outside the plane are disabled. This requires add-on 1.14.0 or newer.
 
 Choose **Render current frame** in the pointer overlay to render Blender's current frame and receive the image through the WebSocket panel. Stop recording first and enable auto-send in Blender's Server mode. This requires add-on 1.15.0 or newer.
+
+## URL / voice actions (v0.8.0)
+
+`?action=` (or `?a=`) accepts free-form commands chained with `;` or `,` (a comma between digits is not a separator). Case, dashes/underscores/`+`, and the filler words "to"/"the" are ignored; `name:arg` and `name=arg` also work. `w` (delay) still applies.
+
+| Command | Aliases |
+| --- | --- |
+| `render`, `clear`, `speak`, `upper` | (original actions) |
+| `fullscreen render` | `fullscreen`, `focus render`, `render fullscreen` |
+| `focus timeline` | `fullscreen timeline`, `timeline fullscreen` |
+| `exit fullscreen` | `exit focus`, `unfocus` |
+| `play` / `pause` / `toggle play` | `resume`, `start` / `stop` / `play pause` |
+| `mute` / `unmute` | |
+| `seek <time>` | `skip`, `jump`, `go`, `goto`, `playhead`; time is `hh:mm:ss`, `mm:ss`, or seconds |
+| `restart` | `rewind` |
+
+Examples: `?action=fullscreen-render`, `?action=speak,focus-timeline`, `?action=skip%20to%2000:01:30;play`, `?a=seek=90&w=2`.
+
+Fullscreen and sound need a user gesture: the target pane first fills the viewport via CSS, and real fullscreen is requested on the first tap/keypress. If autoplay with sound is blocked, playback continues muted and unmutes on the next tap. Unknown commands show a non-blocking toast.
+
+At runtime: `window.urlAutofill.run('skip to 1:30')`, `window.urlAutofill.actions()`, or set the hash to `#a=pause`.
+
+**Adding an action** is one entry in the `createActionRegistry({...})` call in `src/lib/legacy-controller.js`:
+
+```js
+'next clip': { aliases: ['next'], run: args => nextClip(args) },
+```
+
+Parsing lives in `src/lib/url-actions.js` (tested in `test/url-actions.test.js`).
