@@ -1,6 +1,6 @@
 # URL Autofill
 
-Car-browser helper page (v0.8.1), built with SvelteKit and `adapter-static`. Open with query params, for example:
+Car-browser helper page (v0.8.2), built with SvelteKit and `adapter-static`. Open with query params, for example:
 
 `https://plachenko.github.io/url-autofill/?t=hi&r=hello&a=speak`
 
@@ -92,7 +92,7 @@ Use **Axis lock** below the pointer controls to choose Free or constrain movemen
 
 Choose **Render current frame** in the pointer overlay to render Blender's current frame and receive the image through the WebSocket panel. Stop recording first and enable auto-send in Blender's Server mode. This requires add-on 1.15.0 or newer.
 
-## URL / voice actions (v0.8.1)
+## URL / voice actions (v0.8.2)
 
 `?action=` (or `?a=`) accepts free-form commands chained with `;` or `,` (a comma between digits is not a separator). Case, dashes/underscores/`+`, and the filler words "to"/"the" are ignored; `name:arg` and `name=arg` also work. `w` (delay) still applies.
 

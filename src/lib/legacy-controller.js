@@ -1117,7 +1117,7 @@ import { createPreviewSplits } from './preview-splits.js';
     let renderFocus = false;
     try { renderFocus = window.localStorage.getItem(focusStorageKey) === '1'; }
     catch (error) { /* Keep the expanded timeline when storage is unavailable. */ }
-    function setRenderFocus(focused) {
+    function setRenderFocus(focused, paneAction) {
       renderFocus = focused;
       document.body.classList.toggle('render-focus', focused);
       timelineToggle.textContent = focused ? 'Tracks' : 'Focus';
@@ -1125,7 +1125,7 @@ import { createPreviewSplits } from './preview-splits.js';
       timelineToggle.setAttribute('aria-expanded', String(!focused));
       try { window.localStorage.setItem(focusStorageKey, focused ? '1' : '0'); }
       catch (error) { /* The timeline still expands without browser storage. */ }
-      window.dispatchEvent(new CustomEvent('urlAutofill:focus', { detail: { focused } }));
+      window.dispatchEvent(new CustomEvent('urlAutofill:focus', { detail: { focused, paneAction } }));
     }
     timelineToggle.addEventListener('click', () => setRenderFocus(!renderFocus));
     const renderSurface = document.getElementById('render-surface');
@@ -3629,14 +3629,10 @@ import { createPreviewSplits } from './preview-splits.js';
     let previousRenderFocus = null;
     function viewFocus(kind) {
       if (kind && previousRenderFocus === null) previousRenderFocus = renderFocus;
-      document.body.classList.remove('action-focus-render', 'action-focus-timeline');
       if (!kind && previousRenderFocus !== null) {
-        setRenderFocus(previousRenderFocus);
+        setRenderFocus(previousRenderFocus, 'restore');
         previousRenderFocus = null;
-      }
-      if (kind === 'render' && renderFocus === false) setRenderFocus(true);
-      if (kind === 'timeline' && renderFocus === true) setRenderFocus(false);
-      if (kind === 'timeline') document.body.classList.add('action-focus-timeline');
+      } else if (kind) setRenderFocus(kind === 'render', kind);
       // Fullscreen the page so render focus keeps its existing timeline controls.
       const target = kind && document.documentElement;
       pendingFullscreen = target || null;
@@ -3682,7 +3678,11 @@ import { createPreviewSplits } from './preview-splits.js';
       seek: { aliases: ['skip', 'jump', 'go', 'goto', 'playhead'], run: args => {
         const seconds = parseTime(args);
         if (seconds === null) toast(`Could not read time "${args}". Use hh:mm:ss, mm:ss, or seconds.`);
-        else setCompositionTime(seconds);
+        else {
+          if (seconds > compositionDuration)
+            toast(`Seek ${seconds}s is past the end; jumped to ${compositionDuration.toFixed(1)}s.`);
+          setCompositionTime(seconds);
+        }
       } },
       restart: { aliases: ['rewind'], run: () => setCompositionTime(0) }
     });
@@ -3820,9 +3820,13 @@ import { createPreviewSplits } from './preview-splits.js';
       const requestedPosition = Number(params.get('at'));
       if (params.has('at') && Number.isFinite(requestedPosition) && requestedPosition >= 0)
         session.playheadSeconds = requestedPosition;
-      void refreshCompositor();
+      const compositorReady = refreshCompositor();
       refreshClipList();
       if (mediaMessage) message(mediaMessage, mediaError);
+      // URL actions wait for the compositor so compositionDuration is known (seek would clamp to 0).
+      Promise.resolve(compositorReady).catch(() => {}).then(() => runUrlActions(params));
+    }
+    function runUrlActions(params) {
       if (params.has('a') || params.get('sp') === '1') {
         const name = params.has('a') ? params.get('a').trim() : 'speak';
         const execute = () => {

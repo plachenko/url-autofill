@@ -1,5 +1,5 @@
 <details>
-    <summary>Help / About · v0.8.1</summary>
+    <summary>Help / About · v0.8.2</summary>
     <ul>
       <li>The full interface is the default. The Minimal view button or <code>u</code> key toggles the view and saves the choice in this browser. Older <code>minimal=</code> links set that saved choice once, then the parameter is removed.</li>
       <li>Clear saved data in the menu removes this app's clips, tracks, text, memory, pane sizes, and preferences from this browser after confirmation.</li>

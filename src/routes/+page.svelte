@@ -14,6 +14,7 @@
   let showPreviewSplits = $state(true);
   const focusThreshold = 16;
   const trackFocusThreshold = 80;
+  let previousPaneSize = null;
   let syncingFromResize = false;
   let switchingByDivider = false;
   let draggingDivider = false;
@@ -188,6 +189,22 @@
         syncPictureInPicture(true);
     }, { signal: pipListeners.signal });
     const syncFocus = (event) => {
+      // URL actions use the same PaneForge split as the toggle and divider.
+      const action = event.detail.paneAction;
+      if (action === "render" || action === "timeline") {
+        if (previousPaneSize === null) previousPaneSize = timelinePane.getSize();
+        if (action === "timeline") {
+          timelinePane.expand();
+          timelinePane.resize(100);
+          return;
+        }
+      } else if (action === "restore" && previousPaneSize !== null) {
+        const size = previousPaneSize;
+        previousPaneSize = null;
+        if (timelinePane.isCollapsed()) timelinePane.expand();
+        timelinePane.resize(size);
+        return;
+      }
       document.body.classList.toggle("timeline-tracks-expanded",
         !event.detail.focused && timelinePane?.getSize() >= trackFocusThreshold);
       if (syncingFromResize || switchingByDivider || draggingDivider) return;
@@ -272,7 +289,7 @@
       syncPictureInPicture(active);
     });
     if (!document.body.classList.contains("render-focus") &&
-        !document.body.classList.contains("action-focus-timeline"))
+        previousPaneSize === null)
       document.getElementById("timeline-toggle")?.click();
     return () => {
       cancelAnimationFrame(pipInitFrame);
@@ -301,7 +318,7 @@
 </script>
 
 <svelte:head>
-  <title>URL Autofill · v0.8.1</title>
+  <title>URL Autofill · v0.8.2</title>
 </svelte:head>
 
 <ControlsDrawer />
