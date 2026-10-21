@@ -1,5 +1,5 @@
 import { compactParams } from "./url-parameters.js";
-import { createActionRegistry, parseTime } from "./url-actions.js";
+import { createActionRegistry, normalizePhrase, parseTime } from "./url-actions.js";
 import { mediaStorageKey, validMediaId, validMime, storeMediaPart, storeWholeMedia, updatePaletteClip, deleteMedia, loadMedia, loadMediaAsync, storeReceivedMedia } from "./media-store.js";
 import { paletteDefaults, paletteTemplate, paletteDataUri, loadPaletteTemplates,
   savePaletteTemplates, createPaletteClip } from './palette-objects.js';
@@ -3683,6 +3683,44 @@ import { createPreviewSplits } from './preview-splits.js';
             toast(`Seek ${seconds}s is past the end; jumped to ${compositionDuration.toFixed(1)}s.`);
           setCompositionTime(seconds);
         }
+      } },
+      move: { aliases: ['place', 'position'], run: args => {
+        const tokens = args.split(/[,\s]+/).filter(Boolean);
+        let targetTrack = null;
+        if (tokens.at(-2) === 'track') {
+          const number = Number(tokens.pop());
+          tokens.pop();
+          if (!Number.isInteger(number) || number < 1 || number > tracks.length) {
+            toast(`Invalid track. Use a track number from 1 to ${tracks.length}.`);
+            return;
+          }
+          targetTrack = number - 1;
+        }
+        const seconds = parseTime(tokens.pop());
+        if (seconds === null || !Number.isFinite(seconds) || seconds > 86400) {
+          toast('Invalid move time. Use hh:mm:ss, mm:ss, or seconds from 0 to 86400.');
+          return;
+        }
+        // Normalization can turn punctuation within an ID into several words.
+        const id = tokens.join(' ');
+        let sourceTrack = -1;
+        let clip;
+        for (let index = 0; index < tracks.length; index++) {
+          clip = tracks[index].find(value => normalizePhrase(value.id) === id);
+          if (clip) { sourceTrack = index; break; }
+        }
+        if (!clip) {
+          toast(`Unknown clip ID "${id}".`);
+          return;
+        }
+        const destination = targetTrack ?? sourceTrack;
+        tracks[sourceTrack].splice(tracks[sourceTrack].indexOf(clip), 1);
+        clip.start = roundTime(seconds);
+        tracks[destination].push(clip);
+        tracks.forEach(track => track.sort((a, b) => a.start - b.start));
+        activeTrack = destination;
+        saveTracks();
+        void refreshCompositor();
       } },
       restart: { aliases: ['rewind'], run: () => setCompositionTime(0) }
     });

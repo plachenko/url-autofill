@@ -31,3 +31,20 @@ test('registry normalizes phrases, aliases and args', () => {
   assert.deepEqual(calls, ['fs', 'tl', ['seek', 90], ['seek', 90], ['seek', 90], 'tl', 'fs']);
   assert.deepEqual(unknown, ['dance']);
 });
+
+
+test('registry parses move commands and aliases with normalized arguments', () => {
+  const registry = createActionRegistry({
+    move: { aliases: ['place', 'position'], run: () => {} }
+  });
+  for (const [input, args] of [
+    ['move clip2 to 5', 'clip2 5'],
+    ['move=clip2,5', 'clip2,5'],
+    ['move:clip2 5', 'clip2 5'],
+    ['move clip2 to 5 track 2', 'clip2 5 track 2'],
+    ['place CLIP2 to 5', 'clip2 5'],
+    ['position Clip-One_two+3 to 5', 'clip one two 3 5']
+  ]) {
+    assert.deepEqual(registry.parse(input), [{ name: 'move', args }]);
+  }
+});

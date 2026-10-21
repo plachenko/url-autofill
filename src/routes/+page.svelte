@@ -318,7 +318,7 @@
 </script>
 
 <svelte:head>
-  <title>URL Autofill · v0.8.2</title>
+  <title>URL Autofill · v0.8.3</title>
 </svelte:head>
 
 <ControlsDrawer />

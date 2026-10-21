@@ -1,6 +1,6 @@
 # URL Autofill
 
-Car-browser helper page (v0.8.2), built with SvelteKit and `adapter-static`. Open with query params, for example:
+Car-browser helper page (v0.8.3), built with SvelteKit and `adapter-static`. Open with query params, for example:
 
 `https://plachenko.github.io/url-autofill/?t=hi&r=hello&a=speak`
 
@@ -92,7 +92,7 @@ Use **Axis lock** below the pointer controls to choose Free or constrain movemen
 
 Choose **Render current frame** in the pointer overlay to render Blender's current frame and receive the image through the WebSocket panel. Stop recording first and enable auto-send in Blender's Server mode. This requires add-on 1.15.0 or newer.
 
-## URL / voice actions (v0.8.2)
+## URL / voice actions (v0.8.3)
 
 `?action=` (or `?a=`) accepts free-form commands chained with `;` or `,` (a comma between digits is not a separator). Case, dashes/underscores/`+`, and the filler words "to"/"the" are ignored; `name:arg` and `name=arg` also work. `w` (delay) still applies.
 
@@ -106,8 +106,11 @@ Choose **Render current frame** in the pointer overlay to render Blender's curre
 | `mute` / `unmute` | |
 | `seek <time>` | `skip`, `jump`, `go`, `goto`, `playhead`; time is `hh:mm:ss`, `mm:ss`, or seconds |
 | `restart` | `rewind` |
+| `move <id> to <time> [track N]` | `place`, `position`; time uses the same formats as `seek`; track is 1-based |
 
 Examples: `?action=fullscreen-render`, `?action=speak,focus-timeline`, `?action=skip%20to%2000:01:30;play`, `?a=seek=90&w=2`.
+
+`move clip2 to 5`, `move=clip2,5`, and `move:clip2 5` set an existing clip’s start time, keeping its current track. Add `track 2` to move it to the second existing track. IDs are matched case-insensitively; dashes/underscores/`+` are treated as spaces (for example, `Clip-One` matches `clip one`). Unknown IDs, invalid times, and invalid tracks show a toast.
 
 Fullscreen and sound need a user gesture: the target pane first fills the viewport via CSS, and real fullscreen is requested on the first tap/keypress. If autoplay with sound is blocked, playback continues muted and unmutes on the next tap. Unknown commands show a non-blocking toast.
 
