@@ -192,14 +192,17 @@
       // URL actions use the same PaneForge split as the toggle and divider.
       const action = event.detail.paneAction;
       if (action === "render" || action === "timeline") {
-        if (previousPaneSize === null) previousPaneSize = timelinePane.getSize();
+        const size = timelinePane.getSize();
+        if (!event.detail.previousFocused && size > focusThreshold && size < 99)
+          previousPaneSize = size;
         if (action === "timeline") {
           timelinePane.expand();
           timelinePane.resize(100);
           return;
         }
-      } else if (action === "restore" && previousPaneSize !== null) {
-        const size = previousPaneSize;
+      } else if (action === "restore") {
+        const size = previousPaneSize > focusThreshold && previousPaneSize < 99
+          ? previousPaneSize : 28;
         previousPaneSize = null;
         if (timelinePane.isCollapsed()) timelinePane.expand();
         timelinePane.resize(size);
@@ -318,7 +321,7 @@
 </script>
 
 <svelte:head>
-  <title>URL Autofill · v0.8.3</title>
+  <title>URL Autofill · v0.8.4</title>
 </svelte:head>
 
 <ControlsDrawer />

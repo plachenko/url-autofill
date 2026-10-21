@@ -1,6 +1,6 @@
 # URL Autofill
 
-Car-browser helper page (v0.8.3), built with SvelteKit and `adapter-static`. Open with query params, for example:
+Car-browser helper page (v0.8.4), built with SvelteKit and `adapter-static`. Open with query params, for example:
 
 `https://plachenko.github.io/url-autofill/?t=hi&r=hello&a=speak`
 
@@ -92,7 +92,7 @@ Use **Axis lock** below the pointer controls to choose Free or constrain movemen
 
 Choose **Render current frame** in the pointer overlay to render Blender's current frame and receive the image through the WebSocket panel. Stop recording first and enable auto-send in Blender's Server mode. This requires add-on 1.15.0 or newer.
 
-## URL / voice actions (v0.8.3)
+## URL / voice actions (v0.8.4)
 
 `?action=` (or `?a=`) accepts free-form commands chained with `;` or `,` (a comma between digits is not a separator). Case, dashes/underscores/`+`, and the filler words "to"/"the" are ignored; `name:arg` and `name=arg` also work. `w` (delay) still applies.
 
@@ -102,6 +102,8 @@ Choose **Render current frame** in the pointer overlay to render Blender's curre
 | `fullscreen render` | `fullscreen`, `focus render`, `render fullscreen` |
 | `focus timeline` | `fullscreen timeline`, `timeline fullscreen` |
 | `exit fullscreen` | `exit focus`, `unfocus` |
+| `unfocus render` | `exit render focus` |
+| `unfocus timeline` | `exit timeline focus` |
 | `play` / `pause` / `toggle play` | `resume`, `start` / `stop` / `play pause` |
 | `mute` / `unmute` | |
 | `seek <time>` | `skip`, `jump`, `go`, `goto`, `playhead`; time is `hh:mm:ss`, `mm:ss`, or seconds |
@@ -123,3 +125,5 @@ At runtime: `window.urlAutofill.run('skip to 1:30')`, `window.urlAutofill.action
 ```
 
 Parsing lives in `src/lib/url-actions.js` (tested in `test/url-actions.test.js`).
+
+Unfocus / exit focus / exit fullscreen always expand the timeline to the last non-focused split (or 28%) and exit fullscreen. Pane-specific exits only act when that pane is focused; otherwise they show “Render isn't focused” or “Timeline isn't focused”. Hyphenated forms such as `?a=unfocus-render` work too.

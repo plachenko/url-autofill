@@ -1118,6 +1118,7 @@ import { createPreviewSplits } from './preview-splits.js';
     try { renderFocus = window.localStorage.getItem(focusStorageKey) === '1'; }
     catch (error) { /* Keep the expanded timeline when storage is unavailable. */ }
     function setRenderFocus(focused, paneAction) {
+      const previousFocused = renderFocus;
       renderFocus = focused;
       document.body.classList.toggle('render-focus', focused);
       timelineToggle.textContent = focused ? 'Tracks' : 'Focus';
@@ -1125,7 +1126,7 @@ import { createPreviewSplits } from './preview-splits.js';
       timelineToggle.setAttribute('aria-expanded', String(!focused));
       try { window.localStorage.setItem(focusStorageKey, focused ? '1' : '0'); }
       catch (error) { /* The timeline still expands without browser storage. */ }
-      window.dispatchEvent(new CustomEvent('urlAutofill:focus', { detail: { focused, paneAction } }));
+      window.dispatchEvent(new CustomEvent('urlAutofill:focus', { detail: { focused, paneAction, previousFocused } }));
     }
     timelineToggle.addEventListener('click', () => setRenderFocus(!renderFocus));
     const renderSurface = document.getElementById('render-surface');
@@ -3628,11 +3629,13 @@ import { createPreviewSplits } from './preview-splits.js';
     let pendingFullscreen = null;
     let previousRenderFocus = null;
     function viewFocus(kind) {
-      if (kind && previousRenderFocus === null) previousRenderFocus = renderFocus;
-      if (!kind && previousRenderFocus !== null) {
-        setRenderFocus(previousRenderFocus, 'restore');
+      if (kind && !renderFocus && !document.body.classList.contains('timeline-pip'))
+        previousRenderFocus = renderFocus;
+      if (!kind) {
+        pendingFullscreen = null;
+        setRenderFocus(false, 'restore');
         previousRenderFocus = null;
-      } else if (kind) setRenderFocus(kind === 'render', kind);
+      } else setRenderFocus(kind === 'render', kind);
       // Fullscreen the page so render focus keeps its existing timeline controls.
       const target = kind && document.documentElement;
       pendingFullscreen = target || null;
@@ -3641,6 +3644,16 @@ import { createPreviewSplits } from './preview-splits.js';
         // Without a user gesture this is usually rejected; retry on the first tap or key.
         if (request) void Promise.resolve(request.call(target)).then(() => { pendingFullscreen = null; }, () => {});
       } else if (fullscreenElement()) void changeFullscreen(null);
+    }
+    function unfocusPane(kind) {
+      const focused = kind === 'render'
+        ? renderFocus || document.body.classList.contains('render-focus')
+        : document.body.classList.contains('timeline-pip');
+      if (!focused) {
+        toast(kind === 'render' ? "Render isn't focused" : "Timeline isn't focused");
+        return;
+      }
+      viewFocus(null);
     }
     const tryPendingFullscreen = () => {
       const target = pendingFullscreen;
@@ -3670,6 +3683,8 @@ import { createPreviewSplits } from './preview-splits.js';
       'fullscreen render': { aliases: ['fullscreen', 'focus render', 'render fullscreen'], run: () => viewFocus('render') },
       'focus timeline': { aliases: ['fullscreen timeline', 'timeline fullscreen'], run: () => viewFocus('timeline') },
       'exit fullscreen': { aliases: ['exit focus', 'unfocus'], run: () => viewFocus(null) },
+      'unfocus render': { aliases: ['exit render focus'], run: () => unfocusPane('render') },
+      'unfocus timeline': { aliases: ['exit timeline focus'], run: () => unfocusPane('timeline') },
       play: { aliases: ['resume', 'start'], run: play },
       pause: { aliases: ['stop'], run: () => { if (compositionPlaying) compositionPlay.click(); } },
       'toggle play': { aliases: ['play pause'], run: () => compositionPlay.click() },
