@@ -82,7 +82,27 @@ Save both files, then select them in the archive panel and choose **Verify saved
 
 ### Blender add-on and pointer recording
 
-The companion [Render to WebSocket add-on](blender-addon/README.md) is tracked in `blender-addon/`. Build its installer with `python blender-addon/build.py`.
+The companion **Render to WebSocket** Blender add-on (version 1.15.0, Blender 4.2+) lives in its own public repository, [plachenko/blender-render-to-websocket](https://github.com/plachenko/blender-render-to-websocket), and is included here as a git submodule at `blender-addon/`. It sends completed Blender renders to this page over WebSocket as SHA-256-verified base64 chunks (replaying the latest file on reconnect), accepts pointer positions from the **Pointers** overlay to drive and record Empties, advertises the scene's object hierarchy, and can render the current frame on request. See its [README](https://github.com/plachenko/blender-render-to-websocket#readme) for full details.
+
+Set up the submodule:
+
+```sh
+git clone --recurse-submodules https://github.com/plachenko/url-autofill.git
+# or, after a normal clone:
+git submodule update --init
+```
+
+Optionally run `git config submodule.recurse true` once so `git pull` also checks out the add-on commit this repo records.
+
+Update to the latest add-on commit:
+
+```sh
+git submodule update --remote blender-addon
+git add blender-addon
+git commit -m "Update blender-addon submodule"
+```
+
+Build the add-on's installer with `python blender-addon/build.py`.
 
 In Blender's Output Properties > Render to WebSocket > WebSocket Pointer Control, configure an independent origin and optionally a target Empty. Connect from the header favorite-server controls or Clips > Import, then open **Pointers**. Select an advertised scene object and choose **Attach & enable** to make it follow the control Empty, or configure the target in Blender. Set the plane size in the overlay or in Blender. Browser X/Y/Z buttons choose the movement plane when **Use browser plane** is on; Blender's configured plane wins when it is off. Select the origin, target, or followed object in Blender and enable viewport Overlays to see the plane bounds. Choose a starting frame in Blender, click **Start Recording**, move the pointers, then click **Stop Recording**. Each take captures location keyframes at scene fps in a new action; the previous action is retained. Stopping turns off live control so you can play or render the recorded animation. Save the .blend to keep it.
 
