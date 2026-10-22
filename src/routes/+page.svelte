@@ -7,11 +7,13 @@
   import TimelineEditor from "../lib/components/TimelineEditor.svelte";
   import PointerOverlay from "../lib/components/PointerOverlay.svelte";
   import { clampPipRect, initialPipRect, movePipRect, pinchPipRect } from "../lib/pip-geometry.js";
+  import { dockEdgeForPip, dockEdges, timelineSizeAt } from "../lib/pip-docking.js";
   import { initialize } from "../lib/legacy-controller.js";
   import "../app.css";
 
   let timelinePane = $state(null);
   let showPreviewSplits = $state(true);
+  let dockEdge = $state("top");
   const focusThreshold = 16;
   const trackFocusThreshold = 80;
   let previousPaneSize = null;
@@ -19,6 +21,14 @@
   let switchingByDivider = false;
   let draggingDivider = false;
   let syncPictureInPicture = null;
+
+  function dockPreview(edge) {
+    dockEdge = edge;
+    try { localStorage.setItem("urlAutofill.previewDockEdge.v1", edge); }
+    catch { /* Docking still works without storage. */ }
+    document.body.removeAttribute("data-pip-dock-target");
+    timelinePane?.resize(50);
+  }
 
   function showTimelineForSize(size) {
     if (!Number.isFinite(size)) return;
@@ -39,6 +49,10 @@
   onMount(() => {
     try { showPreviewSplits = localStorage.getItem("urlAutofill.pipSplits.v1") !== "false"; }
     catch { /* Keep the default when storage is unavailable. */ }
+    try {
+      const savedEdge = localStorage.getItem("urlAutofill.previewDockEdge.v1");
+      if (dockEdges.includes(savedEdge)) dockEdge = savedEdge;
+    } catch { /* Use the top edge when storage is unavailable. */ }
     const resizer = document.querySelector(".pane-resizer");
     const timelineElement = document.querySelector(".timeline-pane");
     const pipPane = document.querySelector(".stage-pane");
@@ -73,6 +87,7 @@
         pointers.clear();
         gesture = null;
         document.body.classList.remove("timeline-pip-dragging", "timeline-pip-dock-ready");
+        document.body.removeAttribute("data-pip-dock-target");
         if (document.body.classList.contains("timeline-pip")) {
           document.body.classList.replace("timeline-pip", "timeline-pip-exiting");
           clearTimeout(pipExitTimer);
@@ -107,16 +122,19 @@
       } else gesture = null;
       document.body.classList.toggle("timeline-pip-dragging", gesture?.type === "move");
       document.body.classList.remove("timeline-pip-dock-ready");
+      document.body.removeAttribute("data-pip-dock-target");
     };
-    const updateDockTarget = () => {
+    const updateDockTarget = (point) => {
       const bounds = timelineElement.getBoundingClientRect();
       document.body.style.setProperty("--pip-dock-top", `${bounds.top}px`);
-      const overDock = pipRect.left < bounds.right &&
-        pipRect.left + pipRect.width > bounds.left &&
-        pipRect.top <= bounds.top + 8 &&
-        pipRect.top + pipRect.height >= bounds.top;
-      document.body.classList.toggle("timeline-pip-dock-ready", overDock);
-      return overDock;
+      document.body.style.setProperty("--pip-dock-left", `${bounds.left}px`);
+      document.body.style.setProperty("--pip-dock-width", `${bounds.width}px`);
+      document.body.style.setProperty("--pip-dock-height", `${bounds.height}px`);
+      const target = dockEdgeForPip(point, pipRect, bounds);
+      if (target) document.body.dataset.pipDockTarget = target;
+      else document.body.removeAttribute("data-pip-dock-target");
+      document.body.classList.toggle("timeline-pip-dock-ready", Boolean(target));
+      return target;
     };
     pipCapture.addEventListener("pointerdown", (event) => {
       if (!document.body.classList.contains("timeline-pip") ||
@@ -126,7 +144,7 @@
       pipCapture.setPointerCapture(event.pointerId);
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       resetGesture();
-      if (gesture?.type === "move") updateDockTarget();
+      if (gesture?.type === "move") updateDockTarget({ x: event.clientX, y: event.clientY });
     }, { signal: pipListeners.signal });
     pipCapture.addEventListener("pointermove", (event) => {
       if (!pointers.has(event.pointerId) || !gesture) return;
@@ -136,7 +154,7 @@
         const point = pointers.get(event.pointerId);
         pipRect = movePipRect(gesture.rect,
           point.x - gesture.start.x, point.y - gesture.start.y, viewport());
-        updateDockTarget();
+        updateDockTarget(point);
       } else {
         const [first, second] = [...pointers.values()];
         if (!second || !gesture.distance) return;
@@ -157,11 +175,11 @@
       const dock = event.type === "pointerup" && pointers.size === 1 &&
         gesture?.type === "move" &&
         Math.hypot(event.clientX - gesture.start.x, event.clientY - gesture.start.y) >= 8 &&
-        updateDockTarget();
+        updateDockTarget({ x: event.clientX, y: event.clientY });
       pointers.delete(event.pointerId);
       if (dock) {
         document.body.classList.remove("timeline-pip-dragging", "timeline-pip-dock-ready");
-        timelinePane?.resize(50);
+        dockPreview(dock);
         return;
       }
       if (pointers.size === 0) savePipRect();
@@ -171,6 +189,14 @@
       pipCapture.addEventListener(type, endPipPointer, { signal: pipListeners.signal });
     pipCapture.addEventListener("keydown", (event) => {
       if (!document.body.classList.contains("timeline-pip")) return;
+      const keyboardDock = event.altKey && {
+        ArrowUp: "top", ArrowRight: "right", ArrowDown: "bottom", ArrowLeft: "left"
+      }[event.key];
+      if (keyboardDock) {
+        event.preventDefault();
+        dockPreview(keyboardDock);
+        return;
+      }
       const movement = { ArrowLeft: [-16, 0], ArrowRight: [16, 0],
         ArrowUp: [0, -16], ArrowDown: [0, 16] }[event.key];
       if (movement) pipRect = movePipRect(pipRect, ...movement, viewport());
@@ -225,7 +251,7 @@
     };
     let resizePointer = null;
     // PaneForge's mouse/touch drag uses a delta from the press point. Handle
-    // pointer drags here so the divider is placed at the pointer's Y position.
+    // pointer drags here so the divider is placed at the pointer's position.
     const blockNativeDrag = (event) => {
       event.stopImmediatePropagation();
     };
@@ -244,8 +270,8 @@
     const moveResize = (event) => {
       if (event.pointerId !== resizePointer?.id) return;
       const group = resizer.parentElement.getBoundingClientRect();
-      if (group.height > 0)
-        timelinePane?.resize(100 - (event.clientY - group.top) / group.height * 100);
+      const size = timelineSizeAt({ x: event.clientX, y: event.clientY }, group, dockEdge);
+      if (size !== null) timelinePane?.resize(size);
     };
     const finishResize = (event) => {
       if (event.pointerId !== resizePointer?.id) return;
@@ -281,6 +307,17 @@
     resizer?.addEventListener("mousedown", blockNativeDrag, true);
     resizer?.addEventListener("touchstart", blockNativeDrag, true);
     resizer?.addEventListener("pointerdown", startResize);
+    const resizeWithKeyboard = (event) => {
+      const axis = dockEdge === "left" || dockEdge === "right"
+        ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
+      if (!axis.includes(event.key)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const towardTimeline = dockEdge === "top" || dockEdge === "left" ? axis[0] : axis[1];
+      timelinePane?.resize(Math.max(7, Math.min(99,
+        timelinePane.getSize() + (event.key === towardTimeline ? 2 : -2))));
+    };
+    resizer?.addEventListener("keydown", resizeWithKeyboard, true);
     window.addEventListener("pointermove", moveResize);
     window.addEventListener("pointerup", finishResize);
     window.addEventListener("pointercancel", finishResize);
@@ -302,9 +339,14 @@
       document.body.classList.remove("timeline-pip", "timeline-pip-exiting",
         "timeline-pip-dragging", "timeline-pip-dock-ready");
       document.body.style.removeProperty("--pip-dock-top");
+      document.body.style.removeProperty("--pip-dock-left");
+      document.body.style.removeProperty("--pip-dock-width");
+      document.body.style.removeProperty("--pip-dock-height");
+      document.body.removeAttribute("data-pip-dock-target");
       resizer?.removeEventListener("mousedown", blockNativeDrag, true);
       resizer?.removeEventListener("touchstart", blockNativeDrag, true);
       resizer?.removeEventListener("pointerdown", startResize);
+      resizer?.removeEventListener("keydown", resizeWithKeyboard, true);
       window.removeEventListener("pointermove", moveResize);
       window.removeEventListener("pointerup", finishResize);
       window.removeEventListener("pointercancel", finishResize);
@@ -325,14 +367,15 @@
 </svelte:head>
 
 <ControlsDrawer />
-<div class="page-layout-preview flex flex-col w-full h-full">
+<div class="page-layout-preview flex flex-col w-full h-full" data-dock-edge={dockEdge}>
   <div class="border-b-2 border-white/30">
     <HeaderControls />
   </div>
   <PaneGroup
-    direction="vertical"
+    direction={dockEdge === "left" || dockEdge === "right" ? "horizontal" : "vertical"}
     autoSaveId="urlAutofill.panes.v1"
     class="page-layout-split"
+    data-dock-edge={dockEdge}
   >
     <Pane
       defaultSize={72}
@@ -343,8 +386,8 @@
     >
       <Stage />
       <button class="timeline-pip-gesture" type="button"
-        aria-label="Move preview with arrow keys or drag; pinch or press plus and minus to resize">
-        <span>Preview · drag to move · pinch to resize</span>
+        aria-label="Drag preview to any edge to dock; use arrow keys to move, pinch or plus and minus to resize">
+        <span>Preview · drag to an edge to dock · pinch to resize</span>
       </button>
       <button class="timeline-pip-splits" type="button"
         aria-label="Show preview splits" aria-pressed={showPreviewSplits}
@@ -352,13 +395,13 @@
         onclick={togglePreviewSplits}>Splits</button>
       <button class="timeline-pip-expand" type="button"
         aria-label="Return preview to pane layout" title="Return preview to pane layout"
-        onclick={() => timelinePane?.resize(50)}>↗</button>
+        onclick={() => dockPreview(dockEdge)}>↗</button>
     </Pane>
     <PaneResizer class="pane-resizer" />
     <Pane
       defaultSize={28}
       minSize={10}
-      collapsedSize={7}
+      collapsedSize={dockEdge === "left" || dockEdge === "right" ? 0 : 7}
       collapsible={true}
       bind:this={timelinePane}
       onResize={showTimelineForSize}
@@ -367,6 +410,13 @@
       <TimelineEditor />
     </Pane>
   </PaneGroup>
-  <div class="timeline-pip-dock-line" aria-hidden="true"></div>
+  <div id="focus-seeker" aria-label="Render position">
+    <input id="focus-seeker-scrubber" type="range" min="0" max="0" step="0.01" value="0"
+      aria-label="Render position in seconds" />
+    <span id="focus-seeker-time">0.00 / 0.00s</span>
+  </div>
+  {#each dockEdges as edge}
+    <div class="timeline-pip-dock-line dock-{edge}" aria-hidden="true"></div>
+  {/each}
 </div>
 <PointerOverlay />

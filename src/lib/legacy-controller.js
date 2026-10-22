@@ -1032,6 +1032,8 @@ import { createPreviewSplits } from './preview-splits.js';
     const compositionEmpty = document.getElementById('composition-empty');
     const compositionError = document.getElementById('composition-error');
     const compositionScrubber = document.getElementById('composition-scrubber');
+    const focusSeekerScrubber = document.getElementById('focus-seeker-scrubber');
+    const focusSeekerTime = document.getElementById('focus-seeker-time');
     const seekWrap = document.getElementById('seek-wrap');
     const compactLoopRange = document.getElementById('compact-loop-range');
     const compactRenderFrame = document.getElementById('compact-render-frame');
@@ -1229,6 +1231,10 @@ import { createPreviewSplits } from './preview-splits.js';
     });
     const renderFrameMarker = document.createElement('div');
     renderFrameMarker.id = 'render-frame';
+    renderFrameMarker.title = 'Drag to scrub this clip';
+    renderFrameMarker.tabIndex = 0;
+    renderFrameMarker.setAttribute('role', 'slider');
+    renderFrameMarker.setAttribute('aria-label', 'Scrub the current clip frame');
     const loopRangeHighlight = document.createElement('div');
     loopRangeHighlight.className = 'track-loop-range';
     loopRangeHighlight.setAttribute('aria-hidden', 'true');
@@ -1595,11 +1601,15 @@ import { createPreviewSplits } from './preview-splits.js';
       const markerTile = active && (selectedTracks.has(tracks[active.track]) || shouldAutoExpandTrack(active)
         ? active.tile : active.compactTile);
       if (markerTile) {
-        markerTile.append(renderFrameMarker);
+        if (renderFrameMarker.parentElement !== markerTile) markerTile.append(renderFrameMarker);
         const frameOffset = Math.max(0, Math.min(active.duration,
           session.renderFrameSeconds - active.start));
         renderFrameMarker.style.left = `${Math.max(0, Math.min(markerTile.clientWidth - 2,
           frameOffset * timelineScale))}px`;
+        renderFrameMarker.setAttribute('aria-valuemin', active.start.toFixed(2));
+        renderFrameMarker.setAttribute('aria-valuemax', active.end.toFixed(2));
+        renderFrameMarker.setAttribute('aria-valuenow', session.renderFrameSeconds.toFixed(2));
+        renderFrameMarker.setAttribute('aria-valuetext', `${frameOffset.toFixed(2)} of ${active.duration.toFixed(2)} seconds in ${active.item.id}`);
       } else renderFrameMarker.remove();
       loopRangeHighlight.hidden = session.lockRenderFrame || !active;
       compactLoopRange.hidden = loopRangeHighlight.hidden;
@@ -1615,6 +1625,13 @@ import { createPreviewSplits } from './preview-splits.js';
       compositionScrubber.value = String(session.playheadSeconds);
       compositionScrubber.style.setProperty('--progress', `${compositionDuration ?
         session.playheadSeconds / compositionDuration * 100 : 0}%`);
+      focusSeekerScrubber.max = String(compositionDuration);
+      focusSeekerScrubber.value = String(session.playheadSeconds);
+      focusSeekerScrubber.style.setProperty('--progress', `${compositionDuration ?
+        session.playheadSeconds / compositionDuration * 100 : 0}%`);
+      focusSeekerScrubber.setAttribute('aria-valuetext',
+        `${session.playheadSeconds.toFixed(2)} of ${compositionDuration.toFixed(2)} seconds`);
+      focusSeekerTime.textContent = `${session.playheadSeconds.toFixed(2)} / ${compositionDuration.toFixed(2)}s`;
       seekWrap.style.setProperty('--frame-progress', `${compositionDuration ?
         session.renderFrameSeconds / compositionDuration * 100 : 0}%`);
       compactRenderFrame.hidden = !active;
@@ -1652,6 +1669,49 @@ import { createPreviewSplits } from './preview-splits.js';
       syncCompositionPreview(seek);
       saveSession(true);
     }
+    let frameScrubPointer = null;
+    function scrubClipFrame(clientX) {
+      if (!frameScrubPointer) return;
+      const { entry, tile } = frameScrubPointer;
+      const seconds = entry.start + (clientX - tile.getBoundingClientRect().left) / timelineScale;
+      setCompositionTime(Math.max(entry.start, Math.min(entry.end - .001, seconds)));
+    }
+    renderFrameMarker.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || timelineLocked() || !visibleItem ||
+          (event.pointerType === 'touch' && !event.isPrimary)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stopComposition();
+      frameScrubPointer = { id: event.pointerId, entry: visibleItem,
+        tile: renderFrameMarker.parentElement };
+      renderFrameMarker.setPointerCapture(event.pointerId);
+      session.lockRenderFrame = true;
+      syncFrameLockButton();
+      setCompositionTime(session.renderFrameSeconds);
+    });
+    renderFrameMarker.addEventListener('pointermove', event => {
+      if (event.pointerId === frameScrubPointer?.id && !suppressDragForPinch)
+        scrubClipFrame(event.clientX);
+    });
+    const finishFrameScrub = event => {
+      if (event.pointerId !== frameScrubPointer?.id) return;
+      if (event.type === 'pointerup' && !suppressDragForPinch) scrubClipFrame(event.clientX);
+      frameScrubPointer = null;
+    };
+    renderFrameMarker.addEventListener('pointerup', finishFrameScrub);
+    renderFrameMarker.addEventListener('pointercancel', finishFrameScrub);
+    renderFrameMarker.addEventListener('click', event => event.stopPropagation());
+    renderFrameMarker.addEventListener('keydown', event => {
+      if (!visibleItem || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stopComposition();
+      session.lockRenderFrame = true;
+      syncFrameLockButton();
+      const delta = (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1);
+      setCompositionTime(Math.max(visibleItem.start,
+        Math.min(visibleItem.end - .001, session.renderFrameSeconds + delta)));
+    });
     function compositionTick(now) {
       if (!compositionPlaying) return;
       suppressedAutoExpandClipRefs.clear();
@@ -1683,6 +1743,8 @@ import { createPreviewSplits } from './preview-splits.js';
       compositionPlay.click();
     });
     compositionScrubber.addEventListener('input', () => setCompositionTime(Number(compositionScrubber.value)));
+    focusSeekerScrubber.addEventListener('input', () =>
+      setCompositionTime(Number(focusSeekerScrubber.value)));
     document.getElementById('split-clip').addEventListener('click', () => {
       const at = roundTime(session.playheadSeconds);
       const candidates = selectedClips.size ?
