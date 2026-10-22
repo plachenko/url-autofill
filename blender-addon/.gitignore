@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-*.zip
-*_verification.json
-*_stdout.log
-*_stderr.log
-plane_view_verification.log
-.browser-e2e/
