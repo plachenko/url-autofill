@@ -1,0 +1,5 @@
+[submodule "blender-addon"]
+	path = blender-addon
+	url = https://github.com/plachenko/blender-render-to-websocket.git
+	branch = main
+	update = merge
