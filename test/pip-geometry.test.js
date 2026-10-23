@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { initialPipRect, movePipRect, pinchPipRect } from '../src/lib/pip-geometry.js';
+import { initialPipRect, movePipRect, pinchPipRect, pipRectAtPoint } from '../src/lib/pip-geometry.js';
 
 const viewport = { width: 800, height: 600 };
 
@@ -10,6 +10,14 @@ test('a moved preview stays inside the visible viewport', () => {
   const moved = movePipRect(initial, -1000, -1000, viewport);
   assert.equal(moved.left, 8);
   assert.equal(moved.top, 56);
+});
+
+test('a divider release places the preview around the pointer and keeps its size', () => {
+  const rect = { left: 20, top: 80, width: 200, height: 150 };
+  assert.deepEqual(pipRectAtPoint(rect, { x: 450, y: 300 }, viewport),
+    { left: 350, top: 225, width: 200, height: 150 });
+  assert.deepEqual(pipRectAtPoint(rect, { x: 0, y: 300 }, viewport),
+    { left: 8, top: 225, width: 200, height: 150 });
 });
 
 test('pinch resize keeps the touched point beneath the moving midpoint', () => {

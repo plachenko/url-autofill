@@ -1,8 +1,11 @@
 import { visibleCompositionItem } from './composition-visibility.js';
+import { loopPositionAtElapsed } from './loop-range.js';
 
 export function previewEntryForSource(source, tracks, items, seconds,
-  selectedClips = new Set(), trackModes = []) {
+  selectedClips = new Set(), trackModes = [], loopSeconds = null) {
   if (source === 'selected') {
+    if (Number.isFinite(loopSeconds))
+      return visibleCompositionItem(items, loopSeconds, trackModes);
     const selected = Array.from(selectedClips).at(-1);
     return selected ? items.find(item => item.clipRef === selected) || null
       : visibleCompositionItem(items, seconds, trackModes);
@@ -23,10 +26,13 @@ export function previewEntryForSource(source, tracks, items, seconds,
   return null;
 }
 
-export function previewSourceTime(source, entry, playheadSeconds, locked, elapsedSeconds) {
+export function previewSourceTime(source, entry, playheadSeconds, locked, elapsedSeconds,
+  loopSeconds = null, loopMode = 'repeat') {
   if (!entry) return null;
+  if (source === 'selected' && !locked && Number.isFinite(loopSeconds))
+    return loopSeconds >= entry.start && loopSeconds < entry.end ? loopSeconds : null;
   if ((source.startsWith('clip:') || source === 'selected') && !locked) {
-    return entry.start + (elapsedSeconds % entry.duration);
+    return loopPositionAtElapsed(elapsedSeconds, entry.start, entry.end, loopMode).seconds;
   }
   return playheadSeconds >= entry.start && playheadSeconds < entry.end
     ? playheadSeconds : null;

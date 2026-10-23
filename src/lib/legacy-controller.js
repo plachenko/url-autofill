@@ -14,6 +14,10 @@ import { canShowTeslaTheater, teslaTheaterPreferenceEvent,
   teslaTheaterTransferParam } from './tesla-browser.js';
 import { removeSelectedTracks } from './track-selection.js';
 import { createPreviewSplits } from './preview-splits.js';
+import { clampLoopBounds, loopElapsedAtFrame, loopModes,
+  loopPositionAtElapsed } from './loop-range.js';
+import { tick } from 'svelte';
+import { trackRows } from './track-rows.js';
 
   'use strict';
   export function initialize() {
@@ -1040,6 +1044,11 @@ import { createPreviewSplits } from './preview-splits.js';
     const playheadTimeLabel = document.getElementById('playhead-time');
     const loopTimeLabel = document.getElementById('loop-time');
     const compositionPlay = document.getElementById('composition-play');
+    const loopPlaybackToggle = document.getElementById('loop-playback-toggle');
+    const loopPlaybackMode = document.getElementById('loop-playback-mode');
+    const focusLoopMode = document.getElementById('focus-loop-mode');
+    const loopFollowClipButton = document.getElementById('loop-follow-clip');
+    const focusLoopFollowButton = document.getElementById('focus-loop-follow');
     const timelineToggle = document.getElementById('timeline-toggle');
     const pinPreviewButton = document.getElementById('pin-preview');
     const snapToggle = document.getElementById('snap-toggle');
@@ -1095,7 +1104,9 @@ import { createPreviewSplits } from './preview-splits.js';
     snapToggle.addEventListener('click', () => setSnapEnabled(!snapEnabled));
     setSnapEnabled(snapEnabled);
     const sessionKey = 'urlAutofill.session.v1';
-    const session = { playheadSeconds: 0, renderFrameSeconds: 0, lockRenderFrame: true };
+    const session = { playheadSeconds: 0, renderFrameSeconds: 0, lockRenderFrame: true,
+      loopStartSeconds: null, loopEndSeconds: null, loopPaused: false, loopMode: 'repeat',
+      loopFollowSelectedClip: false };
     try {
       const saved = JSON.parse(window.localStorage.getItem(sessionKey));
       if (saved && Number.isFinite(saved.playheadSeconds) && saved.playheadSeconds >= 0)
@@ -1104,6 +1115,16 @@ import { createPreviewSplits } from './preview-splits.js';
         session.renderFrameSeconds = saved.renderFrameSeconds;
       if (saved && typeof saved.lockRenderFrame === 'boolean')
         session.lockRenderFrame = saved.lockRenderFrame;
+      if (saved && typeof saved.loopPaused === 'boolean')
+        session.loopPaused = saved.loopPaused;
+      if (saved && loopModes.includes(saved.loopMode)) session.loopMode = saved.loopMode;
+      if (saved && typeof saved.loopFollowSelectedClip === 'boolean')
+        session.loopFollowSelectedClip = saved.loopFollowSelectedClip;
+      if (saved && Number.isFinite(saved.loopStartSeconds) && saved.loopStartSeconds >= 0 &&
+          Number.isFinite(saved.loopEndSeconds) && saved.loopEndSeconds > saved.loopStartSeconds) {
+        session.loopStartSeconds = saved.loopStartSeconds;
+        session.loopEndSeconds = saved.loopEndSeconds;
+      }
     } catch (error) { /* Start a fresh timeline session. */ }
     let lastSessionSave = 0;
     function saveSession(force = false) {
@@ -1178,18 +1199,36 @@ import { createPreviewSplits } from './preview-splits.js';
     let activeTrack = 0;
     let compositionItems = [];
     const selectedClips = new Set();
+    const selectedClipSpeedControl = document.getElementById('selected-clip-speed-control');
+    const selectedClipSpeed = document.getElementById('selected-clip-speed');
+    selectedClipSpeed.addEventListener('change', () => {
+      const speed = Number(selectedClipSpeed.value);
+      if (!Number.isFinite(speed) || speed < .25 || speed > 4) {
+        selectedClipSpeed.value = String(Array.from(selectedClips).at(-1)?.speed || 1);
+        compositorMessage('Clip speed must be between 0.25× and 4×.', true);
+        return;
+      }
+      stopComposition();
+      selectedClips.forEach(clip => { clip.speed = speed; });
+      saveTracks();
+      void refreshCompositor();
+    });
     const selectedTracks = new Set();
     let trackSelectionAnchor = null;
     let pendingTrackFocus = null;
     let compositionDuration = 0;
     let compositionPlaying = false;
+    let compositionDirection = 1;
+    let loopFinished = false;
     let compositionFrame = 0;
     let compositionStarted = 0;
     let compositionRevision = 0;
     let rulerResizeObserver = null;
     let timelineGestureController = null;
     let visibleItem = null;
+    let loopItem = null;
     let autoExpandedTrackRow = null;
+    let loopingTrackRow = null;
     let draggingCollapsedClip = false;
     const suppressedAutoExpandClipRefs = new Set();
     function shouldAutoExpandTrack(item) {
@@ -1201,9 +1240,13 @@ import { createPreviewSplits } from './preview-splits.js';
       verticalButton: document.getElementById('preview-split-vertical'),
       horizontalButton: document.getElementById('preview-split-horizontal'),
       getSnapshot: () => ({ tracks, trackModes, items: compositionItems,
-        seconds: session.playheadSeconds, locked: session.lockRenderFrame,
+        seconds: session.playheadSeconds, loopSeconds: session.renderFrameSeconds,
+        locked: session.lockRenderFrame, loopPaused: session.loopPaused,
+        loopMode: session.loopMode, loopFinished,
+        playbackDirection: compositionDirection,
         playing: compositionPlaying, activeTrack, selectedClips }),
       resolveImage: id => loadMedia(id),
+      onLoopToggle: () => toggleLoopPaused(),
       onLayoutChange: updatePinnedScale
     });
     let missingClipError = '';
@@ -1237,8 +1280,122 @@ import { createPreviewSplits } from './preview-splits.js';
     renderFrameMarker.setAttribute('aria-label', 'Scrub the current clip frame');
     const loopRangeHighlight = document.createElement('div');
     loopRangeHighlight.className = 'track-loop-range';
-    loopRangeHighlight.setAttribute('aria-hidden', 'true');
     loopRangeHighlight.hidden = true;
+    const loopCursor = document.createElement('span');
+    loopCursor.className = 'track-loop-cursor';
+    loopCursor.setAttribute('aria-hidden', 'true');
+    loopCursor.hidden = true;
+    let loopStartedAt = performance.now();
+    let loopClockReady = false;
+    let loopDetachedFromPlayhead = false;
+    let loopDirection = 1;
+    let followedLoopClipRef = null;
+    function anchorLoopClock(frame, bounds, direction = 1) {
+      loopDirection = direction;
+      loopStartedAt = performance.now() -
+        loopElapsedAtFrame(frame, bounds.start, bounds.end, session.loopMode, direction) * 1000;
+      loopFinished = false;
+    }
+    function selectedLoopEntry() {
+      const selected = Array.from(selectedClips).at(-1);
+      return selected ? compositionItems.find(entry => entry.clipRef === selected) || null : null;
+    }
+    function loopBounds() {
+      if (!compositionDuration) return { start: 0, end: 0 };
+      if (session.loopFollowSelectedClip) {
+        const entry = selectedLoopEntry();
+        if (entry) {
+          if (followedLoopClipRef !== entry.clipRef) {
+            followedLoopClipRef = entry.clipRef;
+            loopStartedAt = performance.now();
+            loopDirection = 1;
+            loopFinished = false;
+            if (session.loopPaused) session.renderFrameSeconds = entry.start;
+            if (compositionPlaying && !session.lockRenderFrame) {
+              session.playheadSeconds = entry.start;
+              compositionStarted = performance.now() - entry.start * 1000;
+              compositionDirection = 1;
+            }
+          }
+          session.loopStartSeconds = entry.start;
+          session.loopEndSeconds = entry.end;
+        }
+      }
+      if (session.loopStartSeconds === null || session.loopEndSeconds === null) {
+        const current = visibleCompositionItem(compositionItems, session.playheadSeconds, trackModes);
+        session.loopStartSeconds = current?.start ?? 0;
+        session.loopEndSeconds = current?.end ?? compositionDuration;
+      }
+      const bounds = clampLoopBounds(session.loopStartSeconds, session.loopEndSeconds, compositionDuration);
+      session.loopStartSeconds = bounds.start;
+      session.loopEndSeconds = bounds.end;
+      if (!loopClockReady) {
+        anchorLoopClock(session.renderFrameSeconds, bounds);
+        loopClockReady = true;
+      }
+      return bounds;
+    }
+    function setLoopBound(edge, seconds) {
+      const bounds = loopBounds();
+      session.loopFollowSelectedClip = false;
+      followedLoopClipRef = null;
+      const minimum = Math.min(.1, compositionDuration);
+      const next = edge === 'start'
+        ? { start: Math.max(0, Math.min(seconds, bounds.end - minimum)), end: bounds.end }
+        : { start: bounds.start, end: Math.max(bounds.start + minimum,
+          Math.min(seconds, compositionDuration)) };
+      session.loopStartSeconds = next.start;
+      session.loopEndSeconds = next.end;
+      if (compositionPlaying && !session.loopPaused &&
+          (session.playheadSeconds < next.start || session.playheadSeconds >= next.end)) {
+        session.playheadSeconds = next.start;
+      }
+      if (compositionPlaying) {
+        compositionStarted = performance.now() - session.playheadSeconds * 1000;
+        compositionDirection = 1;
+      }
+      const frame = Math.max(next.start, Math.min(session.renderFrameSeconds, next.end - .001));
+      if (session.loopPaused) session.renderFrameSeconds = frame;
+      anchorLoopClock(frame, next);
+      syncCompositionPreview(true);
+      saveSession(true);
+    }
+    for (const edge of ['start', 'end']) {
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = `track-loop-handle track-loop-${edge}`;
+      handle.setAttribute('role', 'slider');
+      handle.setAttribute('aria-label', `${edge === 'start' ? 'Start' : 'End'} of loop in seconds`);
+      handle.setAttribute('aria-valuemin', '0');
+      handle.title = `Drag to change the loop ${edge}; arrow keys move by 0.1 seconds`;
+      handle.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        handle.setPointerCapture(event.pointerId);
+      });
+      handle.addEventListener('pointermove', event => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        const ruler = handle.closest('.track-ruler-lane');
+        if (ruler) setLoopBound(edge,
+          (event.clientX - ruler.getBoundingClientRect().left) / timelineScale);
+      });
+      handle.addEventListener('pointerup', event => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        const ruler = handle.closest('.track-ruler-lane');
+        if (ruler) setLoopBound(edge,
+          (event.clientX - ruler.getBoundingClientRect().left) / timelineScale);
+      });
+      handle.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        event.stopPropagation();
+        const bounds = loopBounds();
+        const value = edge === 'start' ? bounds.start : bounds.end;
+        setLoopBound(edge, value + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1));
+      });
+      loopRangeHighlight.append(handle);
+    }
     function positionCompactTile(compactTile, tile) {
       compactTile.style.left = tile.style.left;
       compactTile.style.width = tile.style.width;
@@ -1256,17 +1413,20 @@ import { createPreviewSplits } from './preview-splits.js';
             (clip.sourceStart === undefined || Number.isFinite(clip.sourceStart) &&
               clip.sourceStart >= 0 && clip.sourceStart <= 86400) &&
             (clip.duration === undefined || Number.isFinite(clip.duration) &&
-              clip.duration >= .1 && clip.duration <= 86400))) &&
+              clip.duration >= .1 && clip.duration <= 86400) &&
+            (clip.speed === undefined || Number.isFinite(clip.speed) &&
+              clip.speed >= .25 && clip.speed <= 4))) &&
         value.flat().length <= 100;
     }
     function clipWindow(clip, item) {
+      const speed = clip.speed || 1;
       const sourceStart = item.type === 'video' ?
         Math.min(Math.max(0, item.duration - .1), clip.sourceStart || 0) : 0;
       const maxDuration = item.type === 'video' ? Math.max(.1, item.duration - sourceStart) : 3600;
-      const duration = clip.duration === undefined ?
+      const sourceDuration = clip.duration === undefined ?
         (item.type === 'video' ? maxDuration : item.duration) :
         Math.max(.1, Math.min(maxDuration, clip.duration));
-      return { sourceStart, duration };
+      return { sourceStart, sourceDuration, duration: sourceDuration / speed, speed };
     }
     function snappedTime(value, excluded) {
       if (!snapEnabled) return value;
@@ -1377,12 +1537,13 @@ import { createPreviewSplits } from './preview-splits.js';
           video.src = entry.item.src;
         }
         const { video } = voice;
+        video.playbackRate = entry.speed;
         if (video.readyState >= 1 && !video.seeking) {
           const target = compositionAudioTime(entry, session.playheadSeconds);
           if (Math.abs(video.currentTime - target) > (seek ? .015 : .25))
             video.currentTime = target;
         }
-        if (compositionPlaying) {
+        if (compositionPlaying && compositionDirection > 0) {
           video.muted = window.urlAutofillMuted === true;
           if (video.paused && !voice.playPending && !voice.playBlocked) {
             voice.playPending = true;
@@ -1404,11 +1565,16 @@ import { createPreviewSplits } from './preview-splits.js';
       compositionVideo.pause();
       for (const voice of trackAudioVoices.values()) voice.video.pause();
       compositionPlay.textContent = 'Play';
+      if (!session.lockRenderFrame && compositionDuration) {
+        const bounds = loopBounds();
+        anchorLoopClock(session.renderFrameSeconds, bounds,
+          loopDetachedFromPlayhead ? loopDirection : compositionDirection);
+      }
+      loopDetachedFromPlayhead = false;
       saveSession(true);
     }
     let imagePreview = null;
     let imagePreviewFrame = 0;
-    let imageLoopStarted = 0;
     function disposeImagePreview() {
       window.cancelAnimationFrame(imagePreviewFrame);
       imagePreviewFrame = 0;
@@ -1499,24 +1665,67 @@ import { createPreviewSplits } from './preview-splits.js';
       const handle = trackPlayhead.firstElementChild;
       handle.textContent = session.lockRenderFrame ? '◆' : '▼';
       handle.setAttribute('aria-label', `Track playhead in seconds; preview frame ${session.lockRenderFrame ? 'locked to playhead' : 'looping'}. Press Enter to toggle lock`);
-      handle.title = session.lockRenderFrame ? 'Let preview frame and red line loop' : 'Lock preview frame and red line to playhead';
+      handle.title = session.lockRenderFrame ? 'Let preview frame and red line loop while paused' : 'Lock preview frame and red line to playhead';
     }
     function toggleFrameLock() {
       session.lockRenderFrame = !session.lockRenderFrame;
+      loopDetachedFromPlayhead = false;
       if (session.lockRenderFrame) session.renderFrameSeconds = session.playheadSeconds;
+      else {
+        const bounds = loopBounds();
+        anchorLoopClock(session.playheadSeconds, bounds);
+      }
       syncFrameLockButton();
       syncCompositionPreview(true);
       saveSession(true);
     }
     function syncCompositionPreview(seek = false) {
+      const bounds = !session.lockRenderFrame && compositionDuration ? loopBounds() : null;
       syncTrackAudio(seek);
+      const followsPlayhead = session.lockRenderFrame ||
+        (compositionPlaying && !session.loopPaused && !loopDetachedFromPlayhead) || !bounds;
+      if (followsPlayhead) {
+        session.renderFrameSeconds = session.playheadSeconds;
+        loopDirection = compositionDirection;
+        loopFinished = false;
+      } else if (session.loopPaused) {
+        session.renderFrameSeconds = Math.max(bounds.start,
+          Math.min(session.renderFrameSeconds, bounds.end - .001));
+        loopFinished = false;
+      } else {
+        const position = loopPositionAtElapsed((performance.now() - loopStartedAt) / 1000,
+          bounds.start, bounds.end, session.loopMode);
+        session.renderFrameSeconds = position.seconds;
+        loopDirection = position.direction;
+        loopFinished = position.finished;
+      }
+      loopPlaybackToggle.hidden = !bounds;
+      loopPlaybackToggle.textContent = session.loopPaused ? 'Resume loop'
+        : loopFinished ? 'Replay one shot' : 'Stop loop';
+      loopPlaybackToggle.setAttribute('aria-pressed', String(session.loopPaused));
+      loopPlaybackMode.hidden = focusLoopMode.hidden = !bounds;
+      loopPlaybackMode.value = focusLoopMode.value = session.loopMode;
+      loopFollowClipButton.hidden = !bounds;
+      loopFollowClipButton.disabled = !selectedLoopEntry();
+      loopFollowClipButton.setAttribute('aria-pressed', String(session.loopFollowSelectedClip));
+      focusLoopFollowButton.hidden = !bounds;
+      focusLoopFollowButton.disabled = loopFollowClipButton.disabled;
+      focusLoopFollowButton.setAttribute('aria-pressed', String(session.loopFollowSelectedClip));
       const active = visibleCompositionItem(compositionItems, session.playheadSeconds, trackModes);
+      loopItem = visibleCompositionItem(compositionItems, session.renderFrameSeconds, trackModes);
       const expandedRow = shouldAutoExpandTrack(active)
         ? trackContent.querySelector(`.track-row[data-track="${active.track}"]`) : null;
       if (autoExpandedTrackRow !== expandedRow) {
         autoExpandedTrackRow?.classList.remove('auto-expanded-track');
         expandedRow?.classList.add('auto-expanded-track');
         autoExpandedTrackRow = expandedRow;
+      }
+      const nextLoopingTrackRow = !session.lockRenderFrame && loopItem
+        ? trackContent.querySelector(`.track-row[data-track="${loopItem.track}"]`) : null;
+      if (loopingTrackRow !== nextLoopingTrackRow) {
+        loopingTrackRow?.classList.remove('looping-track');
+        nextLoopingTrackRow?.classList.add('looping-track');
+        loopingTrackRow = nextLoopingTrackRow;
       }
       compositionEmpty.hidden = Boolean(active) || Boolean(missingClipError);
       if (active !== visibleItem) {
@@ -1541,7 +1750,6 @@ import { createPreviewSplits } from './preview-splits.js';
         if (!compositionVideoFrame.hidden)
           compositionVideoFrame.getContext('2d')?.clearRect(0, 0, compositionVideoFrame.width, compositionVideoFrame.height);
         if (active?.item.type === 'image') {
-          imageLoopStarted = performance.now();
           compositionImage.src = active.item.src;
           void prepareImagePreview(active);
         }
@@ -1550,37 +1758,33 @@ import { createPreviewSplits } from './preview-splits.js';
           compositionVideo.onloadedmetadata = () => {
             if (visibleItem !== active) return;
             compositionVideo.currentTime = Math.min((active.item.sourceOffset || 0) + active.item.duration,
-              (active.item.sourceOffset || 0) + active.sourceStart + Math.max(0, session.playheadSeconds - active.start));
-            session.renderFrameSeconds = session.lockRenderFrame ?
-              session.playheadSeconds : active.start + compositionVideo.currentTime - (active.item.sourceOffset || 0) - active.sourceStart;
+              (active.item.sourceOffset || 0) + active.sourceStart + Math.max(0, session.playheadSeconds - active.start) * active.speed);
             syncCompositionPreview();
-            if (compositionPlaying && !session.lockRenderFrame)
+            if (compositionPlaying && compositionDirection > 0 && !session.lockRenderFrame)
               void compositionVideo.play().catch(() => stopComposition());
           };
           seek = true;
         }
       }
       if (active?.item.type === 'video' && compositionVideo.readyState >= 1) {
-        const offset = (active.item.sourceOffset || 0) + active.sourceStart + session.playheadSeconds - active.start;
-        if (seek || (session.lockRenderFrame && Math.abs(compositionVideo.currentTime - offset) > .015)) {
+        const offset = (active.item.sourceOffset || 0) + active.sourceStart + (session.playheadSeconds - active.start) * active.speed;
+        compositionVideo.playbackRate = active.speed;
+        if (!compositionVideo.seeking &&
+            (seek || Math.abs(compositionVideo.currentTime - offset) >
+              (compositionDirection < 0 ? .015 : followsPlayhead ? .05 : .08))) {
           compositionVideo.currentTime = Math.min((active.item.sourceOffset || 0) + active.item.duration, Math.max(0, offset));
         }
-        if (compositionPlaying && !session.lockRenderFrame && compositionVideo.paused)
+        if (compositionPlaying && compositionDirection > 0 && !session.lockRenderFrame && compositionVideo.paused)
           void compositionVideo.play().catch(() => stopComposition());
-        if ((!compositionPlaying || session.lockRenderFrame) && !compositionVideo.paused)
+        if ((!compositionPlaying || session.lockRenderFrame || compositionDirection < 0) && !compositionVideo.paused)
           compositionVideo.pause();
-        session.renderFrameSeconds = session.lockRenderFrame ?
-          session.playheadSeconds : active.start + compositionVideo.currentTime - (active.item.sourceOffset || 0) - active.sourceStart;
         if (compositionPlaying) drawCompositionVideoFrame();
       }
       if (active?.item.type === 'image') {
         const state = imagePreview?.entry === active && imagePreview.ready ? imagePreview : null;
         const cycleMs = state ? state.starts[state.starts.length - 1] : active.duration * 1000;
-        const phase = session.lockRenderFrame ?
-          Math.max(0, Math.min(1, (session.playheadSeconds - active.start) / active.duration)) :
-          ((performance.now() - imageLoopStarted) % cycleMs) / cycleMs;
-        session.renderFrameSeconds = session.lockRenderFrame ? session.playheadSeconds :
-          active.start + phase * active.duration;
+        const phase = Math.max(0, Math.min(1,
+          (session.playheadSeconds - active.start) / active.duration));
         if (state) {
           const offsetMs = Math.min(cycleMs - .001, phase * cycleMs);
           let low = 0;
@@ -1592,35 +1796,38 @@ import { createPreviewSplits } from './preview-splits.js';
           }
           showImagePreviewFrame(state, low);
         }
-        if (!session.lockRenderFrame && !compositionPlaying && !imagePreviewFrame)
-          imagePreviewFrame = window.requestAnimationFrame(() => {
-            imagePreviewFrame = 0;
-            syncCompositionPreview();
-          });
       }
-      const markerTile = active && (selectedTracks.has(tracks[active.track]) || shouldAutoExpandTrack(active)
-        ? active.tile : active.compactTile);
+      const markerTile = loopItem && (selectedTracks.has(tracks[loopItem.track]) || shouldAutoExpandTrack(loopItem)
+        ? loopItem.tile : loopItem.compactTile);
       if (markerTile) {
         if (renderFrameMarker.parentElement !== markerTile) markerTile.append(renderFrameMarker);
-        const frameOffset = Math.max(0, Math.min(active.duration,
-          session.renderFrameSeconds - active.start));
+        const frameOffset = Math.max(0, Math.min(loopItem.duration,
+          session.renderFrameSeconds - loopItem.start));
         renderFrameMarker.style.left = `${Math.max(0, Math.min(markerTile.clientWidth - 2,
           frameOffset * timelineScale))}px`;
-        renderFrameMarker.setAttribute('aria-valuemin', active.start.toFixed(2));
-        renderFrameMarker.setAttribute('aria-valuemax', active.end.toFixed(2));
+        renderFrameMarker.setAttribute('aria-valuemin', loopItem.start.toFixed(2));
+        renderFrameMarker.setAttribute('aria-valuemax', loopItem.end.toFixed(2));
         renderFrameMarker.setAttribute('aria-valuenow', session.renderFrameSeconds.toFixed(2));
-        renderFrameMarker.setAttribute('aria-valuetext', `${frameOffset.toFixed(2)} of ${active.duration.toFixed(2)} seconds in ${active.item.id}`);
+        renderFrameMarker.setAttribute('aria-valuetext', `${frameOffset.toFixed(2)} of ${loopItem.duration.toFixed(2)} seconds in ${loopItem.item.id}`);
       } else renderFrameMarker.remove();
-      loopRangeHighlight.hidden = session.lockRenderFrame || !active;
+      loopRangeHighlight.hidden = !bounds;
+      loopCursor.hidden = !bounds;
       compactLoopRange.hidden = loopRangeHighlight.hidden;
       seekWrap.classList.toggle('looping', !loopRangeHighlight.hidden);
       if (!loopRangeHighlight.hidden) {
-        loopRangeHighlight.style.left = `${active.start * timelineScale}px`;
-        loopRangeHighlight.style.width = `${active.duration * timelineScale}px`;
+        loopRangeHighlight.style.left = `${bounds.start * timelineScale}px`;
+        loopRangeHighlight.style.width = `${(bounds.end - bounds.start) * timelineScale}px`;
+        loopCursor.style.left = `${session.renderFrameSeconds * timelineScale}px`;
         compactLoopRange.style.left = `${compositionDuration ?
-          active.start / compositionDuration * 100 : 0}%`;
+          bounds.start / compositionDuration * 100 : 0}%`;
         compactLoopRange.style.width = `${compositionDuration ?
-          active.duration / compositionDuration * 100 : 0}%`;
+          (bounds.end - bounds.start) / compositionDuration * 100 : 0}%`;
+        for (const handle of loopRangeHighlight.children) {
+          const isStart = handle.classList.contains('track-loop-start');
+          handle.setAttribute('aria-valuemax', String(compositionDuration));
+          handle.setAttribute('aria-valuenow', (isStart ? bounds.start : bounds.end).toFixed(2));
+          handle.setAttribute('aria-valuetext', `${(isStart ? bounds.start : bounds.end).toFixed(2)} seconds`);
+        }
       }
       compositionScrubber.value = String(session.playheadSeconds);
       compositionScrubber.style.setProperty('--progress', `${compositionDuration ?
@@ -1634,13 +1841,13 @@ import { createPreviewSplits } from './preview-splits.js';
       focusSeekerTime.textContent = `${session.playheadSeconds.toFixed(2)} / ${compositionDuration.toFixed(2)}s`;
       seekWrap.style.setProperty('--frame-progress', `${compositionDuration ?
         session.renderFrameSeconds / compositionDuration * 100 : 0}%`);
-      compactRenderFrame.hidden = !active;
+      compactRenderFrame.hidden = !loopItem && !bounds;
       playheadTimeLabel.textContent = `Playhead ${session.playheadSeconds.toFixed(2)} / ${compositionDuration.toFixed(2)}s`;
       loopTimeLabel.hidden = loopRangeHighlight.hidden;
       if (!loopTimeLabel.hidden) {
-        const loopTime = Math.max(0, Math.min(active.duration,
-          session.renderFrameSeconds - active.start));
-        loopTimeLabel.textContent = `Loop ${loopTime.toFixed(2)} / ${active.duration.toFixed(2)}s`;
+        const loopTime = Math.max(0, Math.min(bounds.end - bounds.start,
+          session.renderFrameSeconds - bounds.start));
+        loopTimeLabel.textContent = `Loop ${loopTime.toFixed(2)} / ${(bounds.end - bounds.start).toFixed(2)}s`;
       }
       compositionScrubber.setAttribute('aria-valuetext', `${session.playheadSeconds.toFixed(2)} of ${compositionDuration.toFixed(2)} seconds`);
       if (trackPlayhead) {
@@ -1660,12 +1867,78 @@ import { createPreviewSplits } from './preview-splits.js';
       }
       previewSplits.sync(seek);
       saveSession();
+      if (bounds && !compositionPlaying && !session.loopPaused && !loopFinished && !imagePreviewFrame)
+        imagePreviewFrame = window.requestAnimationFrame(() => {
+          imagePreviewFrame = 0;
+          syncCompositionPreview();
+        });
     }
+    function toggleLoopPaused() {
+      if (session.lockRenderFrame || !compositionDuration) return;
+      if (loopFinished && session.loopMode === 'one-shot') {
+        const bounds = loopBounds();
+        session.renderFrameSeconds = bounds.start;
+        session.loopPaused = false;
+        anchorLoopClock(bounds.start, bounds);
+      } else if (!session.loopPaused) {
+        if (compositionPlaying) {
+          stopComposition();
+        }
+        session.loopPaused = true;
+        window.cancelAnimationFrame(imagePreviewFrame);
+        imagePreviewFrame = 0;
+      } else {
+        session.loopPaused = false;
+        const bounds = loopBounds();
+        if (session.loopMode === 'one-shot' && session.renderFrameSeconds >= bounds.end - .002)
+          session.renderFrameSeconds = bounds.start;
+        anchorLoopClock(session.renderFrameSeconds, bounds, loopDirection);
+      }
+      syncCompositionPreview(true);
+      saveSession(true);
+    }
+    loopPlaybackToggle.addEventListener('click', toggleLoopPaused);
+    function setLoopMode(mode) {
+      if (!loopModes.includes(mode) || mode === session.loopMode) return;
+      const bounds = compositionDuration ? loopBounds() : null;
+      session.loopMode = mode;
+      compositionDirection = loopDirection = 1;
+      loopFinished = false;
+      if (bounds) anchorLoopClock(session.renderFrameSeconds, bounds);
+      if (compositionPlaying) compositionStarted = performance.now() - session.playheadSeconds * 1000;
+      syncCompositionPreview(true);
+      saveSession(true);
+    }
+    loopPlaybackMode.addEventListener('change', () => setLoopMode(loopPlaybackMode.value));
+    focusLoopMode.addEventListener('change', () => setLoopMode(focusLoopMode.value));
+    function followSelectedClip() {
+      const entry = selectedLoopEntry();
+      if (!entry) { compositorMessage('Select a clip to follow with the loop.', true); return; }
+      session.loopFollowSelectedClip = true;
+      followedLoopClipRef = null;
+      loopBounds();
+      session.renderFrameSeconds = entry.start;
+      anchorLoopClock(entry.start, { start: entry.start, end: entry.end });
+      syncCompositionPreview(true);
+      saveSession(true);
+    }
+    loopFollowClipButton.addEventListener('click', followSelectedClip);
+    focusLoopFollowButton.addEventListener('click', followSelectedClip);
     function setCompositionTime(seconds, seek = true) {
       const nextSeconds = Math.max(0, Math.min(compositionDuration, seconds));
+      if (nextSeconds !== session.playheadSeconds && compositionPlaying &&
+          !session.lockRenderFrame && !session.loopPaused &&
+          !loopDetachedFromPlayhead && compositionDuration) {
+        const bounds = loopBounds();
+        anchorLoopClock(session.renderFrameSeconds, bounds, loopDirection);
+        loopDetachedFromPlayhead = true;
+      }
       if (nextSeconds !== session.playheadSeconds) suppressedAutoExpandClipRefs.clear();
       session.playheadSeconds = nextSeconds;
-      if (compositionPlaying) compositionStarted = performance.now() - session.playheadSeconds * 1000;
+      if (compositionPlaying) {
+        compositionStarted = performance.now() - session.playheadSeconds * 1000;
+        compositionDirection = 1;
+      }
       syncCompositionPreview(seek);
       saveSession(true);
     }
@@ -1677,12 +1950,12 @@ import { createPreviewSplits } from './preview-splits.js';
       setCompositionTime(Math.max(entry.start, Math.min(entry.end - .001, seconds)));
     }
     renderFrameMarker.addEventListener('pointerdown', event => {
-      if (event.button !== 0 || timelineLocked() || !visibleItem ||
+      if (event.button !== 0 || timelineLocked() || !loopItem ||
           (event.pointerType === 'touch' && !event.isPrimary)) return;
       event.preventDefault();
       event.stopPropagation();
       stopComposition();
-      frameScrubPointer = { id: event.pointerId, entry: visibleItem,
+      frameScrubPointer = { id: event.pointerId, entry: loopItem,
         tile: renderFrameMarker.parentElement };
       renderFrameMarker.setPointerCapture(event.pointerId);
       session.lockRenderFrame = true;
@@ -1702,21 +1975,34 @@ import { createPreviewSplits } from './preview-splits.js';
     renderFrameMarker.addEventListener('pointercancel', finishFrameScrub);
     renderFrameMarker.addEventListener('click', event => event.stopPropagation());
     renderFrameMarker.addEventListener('keydown', event => {
-      if (!visibleItem || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      if (!loopItem || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
       event.preventDefault();
       event.stopPropagation();
       stopComposition();
       session.lockRenderFrame = true;
       syncFrameLockButton();
       const delta = (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1);
-      setCompositionTime(Math.max(visibleItem.start,
-        Math.min(visibleItem.end - .001, session.renderFrameSeconds + delta)));
+      setCompositionTime(Math.max(loopItem.start,
+        Math.min(loopItem.end - .001, session.renderFrameSeconds + delta)));
     });
     function compositionTick(now) {
       if (!compositionPlaying) return;
       suppressedAutoExpandClipRefs.clear();
-      session.playheadSeconds = Math.min(compositionDuration, (now - compositionStarted) / 1000);
-      if (session.playheadSeconds >= compositionDuration) stopComposition();
+      if (!session.lockRenderFrame && !session.loopPaused && compositionDuration) {
+        const bounds = loopBounds();
+        const position = loopPositionAtElapsed((now - compositionStarted) / 1000 - bounds.start,
+          bounds.start, bounds.end, session.loopMode);
+        session.playheadSeconds = position.seconds;
+        compositionDirection = position.direction;
+        if (position.finished) {
+          if (!loopDetachedFromPlayhead) session.renderFrameSeconds = position.seconds;
+          stopComposition();
+        }
+      } else {
+        session.playheadSeconds = Math.min(compositionDuration, (now - compositionStarted) / 1000);
+        compositionDirection = 1;
+        if (session.playheadSeconds >= compositionDuration) stopComposition();
+      }
       syncCompositionPreview();
       if (compositionPlaying) compositionFrame = window.requestAnimationFrame(compositionTick);
     }
@@ -1724,7 +2010,15 @@ import { createPreviewSplits } from './preview-splits.js';
       if (compositionPlaying) { stopComposition(); syncCompositionPreview(); return; }
       if (!compositionDuration) { compositorMessage('Add a complete clip to a track first.', true); return; }
       if (session.playheadSeconds >= compositionDuration) setCompositionTime(0);
+      if (!session.lockRenderFrame && !session.loopPaused) {
+        const bounds = loopBounds();
+        if (session.playheadSeconds < bounds.start || session.playheadSeconds >= bounds.end ||
+            (session.loopMode === 'one-shot' && session.playheadSeconds >= bounds.end - .002))
+          setCompositionTime(bounds.start);
+      }
       for (const voice of trackAudioVoices.values()) voice.playBlocked = false;
+      loopDetachedFromPlayhead = false;
+      compositionDirection = 1;
       compositionPlaying = true;
       compositionStarted = performance.now() - session.playheadSeconds * 1000;
       compositionPlay.textContent = 'Pause';
@@ -1751,7 +2045,8 @@ import { createPreviewSplits } from './preview-splits.js';
         compositionItems.filter(entry => selectedClips.has(entry.clipRef)) :
         (visibleItem ? [visibleItem] : []);
       const splittable = candidates.filter(entry =>
-        at - entry.start >= .1 - 1e-9 && entry.end - at >= .1 - 1e-9);
+        at - entry.start >= Math.max(.1, .1 / entry.speed) - 1e-9 &&
+        entry.end - at >= Math.max(.1, .1 / entry.speed) - 1e-9);
       if (!splittable.length) {
         compositorMessage(selectedClips.size ?
           'Move the playhead inside a selected clip, at least 0.1 seconds from each edge.' :
@@ -1768,10 +2063,10 @@ import { createPreviewSplits } from './preview-splits.js';
         const leftDuration = roundTime(at - entry.start);
         const right = { ...original, start: at,
           sourceStart: entry.item.type === 'video' ?
-            roundTime(entry.sourceStart + leftDuration) : 0,
-          duration: roundTime(entry.end - at) };
+            roundTime(entry.sourceStart + leftDuration * entry.speed) : 0,
+          duration: roundTime((entry.end - at) * entry.speed) };
         original.sourceStart = entry.sourceStart;
-        original.duration = leftDuration;
+        original.duration = roundTime(leftDuration * entry.speed);
         tracks[entry.track].push(right);
         if (selectedClips.has(original)) selectedClips.add(right);
       }
@@ -1867,8 +2162,9 @@ import { createPreviewSplits } from './preview-splits.js';
       url.search = '';
       url.searchParams.set('tr', tracks.map(track =>
         track.map(clip => `${clip.id}@${clip.start.toFixed(2)}` +
-          (clip.duration === undefined ? '' :
-            `~${(clip.sourceStart || 0).toFixed(2)}~${clip.duration.toFixed(2)}`)).join(',')).join('|'));
+          (clip.duration === undefined && clip.speed === undefined ? '' :
+            `~${(clip.sourceStart || 0).toFixed(2)}~${(clip.duration ?? compositionItems.find(entry => entry.clipRef === clip)?.sourceDuration ?? .1).toFixed(2)}` +
+            (clip.speed === undefined ? '' : `~${clip.speed.toFixed(2)}`))).join(',')).join('|'));
       url.searchParams.set('at', session.playheadSeconds.toFixed(2));
       try {
         window.history.replaceState(null, '', url);
@@ -1931,8 +2227,15 @@ import { createPreviewSplits } from './preview-splits.js';
       });
       compositionItems = [];
       compositionDuration = 0;
-      trackContent.replaceChildren();
+      trackContent.querySelectorAll('.track-reorder-marker, .timeline-selection-box')
+        .forEach(node => node.remove());
+      trackRows.set([]);
+      await tick();
+      if (revision !== compositionRevision) return;
       function syncSelection() {
+        const selected = Array.from(selectedClips).at(-1);
+        selectedClipSpeedControl.hidden = !selected;
+        if (selected) selectedClipSpeed.value = String(selected.speed || 1);
         compositionItems.forEach(value => {
           if (!value.tile) return;
           const chosen = selectedClips.has(value.clipRef);
@@ -1941,7 +2244,10 @@ import { createPreviewSplits } from './preview-splits.js';
           value.compactTile?.setAttribute('aria-pressed', String(chosen));
           value.tile.querySelector('.clip-select')?.setAttribute('aria-pressed', String(chosen));
         });
-        previewSplits.sync(true);
+        loopFollowClipButton.disabled = !selectedLoopEntry();
+        focusLoopFollowButton.disabled = loopFollowClipButton.disabled;
+        if (session.loopFollowSelectedClip) syncCompositionPreview(true);
+        else previewSplits.sync(true);
       }
       function announceSelection() {
         compositorMessage(`${selectedClips.size} clip${selectedClips.size === 1 ? '' : 's'} selected. Drag a selected clip to move the group.`);
@@ -1967,9 +2273,9 @@ import { createPreviewSplits } from './preview-splits.js';
       source.forEach((track, trackIndex) => track.forEach((clip, clipIndex) => {
         const item = trackDetails[trackIndex][clipIndex];
         if (!item) return;
-        const { sourceStart, duration } = clipWindow(clip, item);
+        const { sourceStart, sourceDuration, duration, speed } = clipWindow(clip, item);
         const entry = { id: clip.id, item, clipRef: tracks[trackIndex][clipIndex],
-          start: clip.start, sourceStart, duration,
+          start: clip.start, sourceStart, sourceDuration, duration, speed,
           end: clip.start + duration, track: trackIndex };
         compositionItems.push(entry);
         compositionDuration = Math.max(compositionDuration, entry.end);
@@ -1985,20 +2291,35 @@ import { createPreviewSplits } from './preview-splits.js';
       }
       else if (hadComposition && !document.body.classList.contains('minimal')) render();
       let laneWidth = Math.max(200, Math.ceil(compositionDuration * timelineScale) + 80);
-      const ruler = document.createElement('div');
-      ruler.className = 'track-row';
-      const rulerLabel = document.createElement('div');
-      rulerLabel.className = 'track-heading timeline-zoom';
-      rulerLabel.setAttribute('aria-label', 'Timeline zoom');
-      const zoomOut = document.createElement('button');
-      zoomOut.type = 'button';
-      zoomOut.textContent = '−';
-      zoomOut.setAttribute('aria-label', 'Zoom timeline out');
-      const zoomValue = document.createElement('span');
-      const zoomIn = document.createElement('button');
-      zoomIn.type = 'button';
-      zoomIn.textContent = '+';
-      zoomIn.setAttribute('aria-label', 'Zoom timeline in');
+      const rowModels = source.map((track, trackIndex) => {
+        const ref = tracks[trackIndex];
+        const startsExpanded = selectedTracks.has(ref) || trackIndex === openingTrack;
+        const appearance = previousTrackAppearance.get(ref) ||
+          (startsExpanded ? { height: 32, paddingTop: '4px', paddingBottom: '4px',
+            fullOpacity: '0', compactOpacity: '1' } : null);
+        const clips = track.flatMap((clip, clipIndex) => {
+          const item = trackDetails[trackIndex][clipIndex];
+          if (!item) return [];
+          const ref = tracks[trackIndex][clipIndex];
+          const entry = compositionItems.find(value => value.clipRef === ref);
+          let displayName = clip.id;
+          try {
+            displayName = JSON.parse(window.localStorage.getItem(`${mediaStorageKey(clip.id)}.meta`))
+              ?.palette?.label || clip.id;
+          } catch { /* Keep the clip ID when metadata is damaged. */ }
+          return [{ ref, index: clipIndex, id: clip.id, start: clip.start, speed: entry.speed,
+            item, entry, displayName, selected: selectedClips.has(ref) }];
+        });
+        return { ref, index: trackIndex, selected: selectedTracks.has(ref),
+          laneWidth, scale: timelineScale, appearance, clips };
+      });
+      trackRows.set(rowModels);
+      await tick();
+      if (revision !== compositionRevision) return;
+      const ruler = document.getElementById('track-ruler');
+      const zoomOut = ruler.querySelector('.timeline-zoom-out');
+      const zoomValue = ruler.querySelector('.timeline-zoom-value');
+      const zoomIn = ruler.querySelector('.timeline-zoom-in');
       function updateZoomLabel() {
         zoomValue.textContent = String(timelineScale);
         zoomValue.title = `${timelineScale} pixels per second`;
@@ -2006,10 +2327,7 @@ import { createPreviewSplits } from './preview-splits.js';
         zoomIn.disabled = timelineScale >= 160;
       }
       updateZoomLabel();
-      rulerLabel.append(zoomOut, zoomValue, zoomIn);
-      const rulerLane = document.createElement('div');
-      rulerLane.className = 'track-ruler-lane';
-      rulerLane.style.width = `${laneWidth}px`;
+      const rulerLane = ruler.querySelector('.track-ruler-lane');
       function renderRulerTicks() {
         const minimumStep = Math.max(1, Math.ceil(40 / timelineScale));
         const labelStep = [1, 2, 5, 10, 20].find(step => step >= minimumStep) ?? 20;
@@ -2028,7 +2346,7 @@ import { createPreviewSplits } from './preview-splits.js';
           if (second % labelStep === 0) tick.textContent = `${second}s`;
           ticks.append(tick);
         }
-        rulerLane.replaceChildren(ticks, loopRangeHighlight);
+        rulerLane.replaceChildren(ticks, loopRangeHighlight, loopCursor);
       }
       function setTimelineZoom(nextScale, anchorTime, anchorX) {
         nextScale = Math.max(10, Math.min(160, Math.round(nextScale)));
@@ -2232,8 +2550,6 @@ import { createPreviewSplits } from './preview-splits.js';
           (event.clientX - rulerLane.getBoundingClientRect().left) / timelineScale);
       });
       rulerLane.addEventListener('pointercancel', () => { rulerSeekPointer = null; });
-      ruler.append(rulerLabel, rulerLane);
-      trackContent.append(ruler);
       trackList.onscroll = renderRulerTicks;
       function updatePlayheadExtent() {
         const rows = trackContent.querySelectorAll('.track-row[data-track]');
@@ -2250,13 +2566,8 @@ import { createPreviewSplits } from './preview-splits.js';
         rulerResizeObserver.observe(trackContent);
       }
       renderRulerTicks();
-      const playhead = document.createElement('div');
-      playhead.id = 'track-playhead';
-      const playheadHandle = document.createElement('button');
-      playheadHandle.type = 'button';
-      playheadHandle.textContent = '▼';
-      playheadHandle.setAttribute('role', 'slider');
-      playheadHandle.setAttribute('aria-valuemin', '0');
+      const playhead = document.getElementById('track-playhead');
+      const playheadHandle = playhead.querySelector('button');
       let draggingPlayhead = false;
       let movedPlayhead = false;
       let pointerStartX = 0;
@@ -2302,48 +2613,22 @@ import { createPreviewSplits } from './preview-splits.js';
         event.preventDefault();
         setCompositionTime(session.playheadSeconds + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : .1));
       });
-      playhead.append(playheadHandle);
       playhead.classList.toggle('selected', playheadSelected);
       trackPlayhead = playhead;
-      trackContent.append(playhead);
       syncFrameLockButton();
       source.forEach((track, trackIndex) => {
-        const row = document.createElement('div');
-        row.className = 'track-row';
-        row.dataset.track = String(trackIndex);
+        const row = trackContent.querySelector(`.track-row[data-track="${trackIndex}"]`);
+        const rowModel = rowModels[trackIndex];
         row.trackRef = tracks[trackIndex];
-        const startsExpanded = selectedTracks.has(row.trackRef) || trackIndex === openingTrack;
-        const appearance = previousTrackAppearance.get(row.trackRef) ||
-          (startsExpanded ? { height: 32, paddingTop: '4px', paddingBottom: '4px',
-            fullOpacity: '0', compactOpacity: '1' } : null);
-        const heading = document.createElement('button');
-        heading.type = 'button';
-        heading.className = 'track-heading';
-        heading.textContent = `Track ${trackIndex + 1}`;
-        heading.setAttribute('aria-label', `Track ${trackIndex + 1}; tap to select, Shift to select a range, drag to reorder`);
-        heading.setAttribute('aria-pressed', String(selectedTracks.has(tracks[trackIndex])));
-        heading.title = 'Tap to select this track; drag to reorder';
-        const headingWrap = document.createElement('div');
-        headingWrap.className = 'track-heading-wrap';
-        const muteButton = document.createElement('button');
-        muteButton.type = 'button';
-        muteButton.className = 'track-mode track-mute';
-        muteButton.textContent = 'M';
+        const appearance = rowModel.appearance;
+        const heading = row.querySelector('.track-heading');
+        const muteButton = row.querySelector('.track-mute');
         muteButton.addEventListener('click', () => toggleTrackMode(row.trackRef, 'muted'));
-        const soloButton = document.createElement('button');
-        soloButton.type = 'button';
-        soloButton.className = 'track-mode track-solo';
-        soloButton.textContent = 'S';
+        const soloButton = row.querySelector('.track-solo');
         soloButton.addEventListener('click', () => toggleTrackMode(row.trackRef, 'solo'));
-        const removeTrackButton = document.createElement('button');
-        removeTrackButton.type = 'button';
-        removeTrackButton.className = 'track-remove';
-        removeTrackButton.textContent = '×';
-        removeTrackButton.setAttribute('aria-label', `Remove track ${trackIndex + 1}`);
-        removeTrackButton.title = `Remove track ${trackIndex + 1}`;
+        const removeTrackButton = row.querySelector('.track-remove');
         removeTrackButton.addEventListener('click', () =>
           deleteTracks(new Set([row.trackRef])));
-        headingWrap.append(heading, muteButton, soloButton, removeTrackButton);
         let suppressHeadingClick = false;
         let trackDrag = null;
         heading.addEventListener('click', event => {
@@ -2425,12 +2710,8 @@ import { createPreviewSplits } from './preview-splits.js';
         };
         heading.addEventListener('pointerup', finishTrackDrag);
         heading.addEventListener('pointercancel', finishTrackDrag);
-        const lane = document.createElement('div');
-        lane.className = 'track-lane';
-        lane.dataset.track = String(trackIndex);
-        lane.style.width = `${laneWidth}px`;
+        const lane = row.querySelector('.track-lane');
         if (appearance) {
-          lane.style.minHeight = `${appearance.height}px`;
           heading.style.paddingTop = appearance.paddingTop;
           heading.style.paddingBottom = appearance.paddingBottom;
           animatedRows.push({ row, heading, lane });
@@ -2439,33 +2720,12 @@ import { createPreviewSplits } from './preview-splits.js';
           const item = trackDetails[trackIndex][clipIndex];
           if (!item) return;
           const id = clip.id;
-          let displayName = id;
-          try { displayName = JSON.parse(window.localStorage.getItem(`${mediaStorageKey(id)}.meta`))?.palette?.label || id; }
-          catch { /* Keep the clip ID when metadata is damaged. */ }
-          const tile = document.createElement('div');
-          tile.className = 'clip-tile';
-          if (appearance) tile.style.opacity = appearance.fullOpacity;
-          const entry = compositionItems.find(value =>
-            value.clipRef === tracks[trackIndex][clipIndex]);
-          if (entry) entry.tile = tile;
+          const clipModel = rowModel.clips.find(value => value.index === clipIndex);
+          const tile = lane.querySelector(`.clip-tile[data-index="${clipIndex}"]`);
+          const entry = clipModel.entry;
+          entry.tile = tile;
           const clipRef = tracks[trackIndex][clipIndex];
-          tile.classList.toggle('selected', selectedClips.has(clipRef));
-          tile.dataset.index = String(clipIndex);
-          tile.style.left = `${Math.round(clip.start * timelineScale)}px`;
-          tile.style.width = `${Math.max(32, Math.round(entry.duration * timelineScale))}px`;
-          const compactTile = document.createElement('div');
-          compactTile.className = 'collapsed-clip';
-          if (appearance) compactTile.style.opacity = appearance.compactOpacity;
-          const compactContent = document.createElement('span');
-          compactContent.className = 'collapsed-clip-content';
-          compactContent.textContent = displayName;
-          compactTile.append(compactContent);
-          compactTile.title = `${id}: ${clip.start.toFixed(2)}s, ${entry.duration.toFixed(2)}s long`;
-          compactTile.classList.toggle('selected', selectedClips.has(clipRef));
-          compactTile.tabIndex = 0;
-          compactTile.setAttribute('role', 'button');
-          compactTile.setAttribute('aria-label', `Select or move ${id} on track ${trackIndex + 1}; arrow keys move`);
-          compactTile.setAttribute('aria-pressed', String(selectedClips.has(clipRef)));
+          const compactTile = lane.querySelector(`.collapsed-clip[data-index="${clipIndex}"]`);
           let suppressCompactClick = false;
           const ignoreNextCompactClick = () => {
             suppressCompactClick = true;
@@ -2491,45 +2751,23 @@ import { createPreviewSplits } from './preview-splits.js';
           });
           positionCompactTile(compactTile, tile);
           entry.compactTile = compactTile;
-          const thumbnail = document.createElement(item.type === 'video' ? 'video' : 'canvas');
-          if (item.type === 'video') {
-            thumbnail.src = item.src;
-            thumbnail.muted = true;
-            thumbnail.playsInline = true;
-            thumbnail.preload = 'metadata';
-            thumbnail.addEventListener('loadedmetadata', () => {
-              thumbnail.currentTime = (item.sourceOffset || 0) + Math.min(.1, item.duration / 2);
-            }, { once: true });
-          } else {
-            thumbnail.width = 160;
-            thumbnail.height = 62;
-            const image = document.createElement('img');
-            image.onload = () => {
-              try {
-                const context = thumbnail.getContext('2d');
-                if (!context || !image.naturalWidth || !image.naturalHeight) return;
-                const scale = Math.max(thumbnail.width / image.naturalWidth,
-                  thumbnail.height / image.naturalHeight);
-                const width = image.naturalWidth * scale;
-                const height = image.naturalHeight * scale;
-                context.drawImage(image, (thumbnail.width - width) / 2,
-                  (thumbnail.height - height) / 2, width, height);
-              } finally { image.removeAttribute('src'); }
-            };
-            image.onerror = () => image.removeAttribute('src');
-            image.src = item.src;
-          }
-          const name = document.createElement('strong');
-          name.textContent = displayName;
-          const length = document.createElement('small');
-          length.textContent = `${entry.duration.toFixed(2)}s`;
-          const select = document.createElement('button');
-          select.type = 'button';
-          select.className = 'clip-select';
-          select.textContent = '✓';
-          select.title = 'Select clip for group moving';
-          select.setAttribute('aria-label', `Select ${id} on track ${trackIndex + 1}`);
-          select.setAttribute('aria-pressed', String(selectedClips.has(clipRef)));
+          const length = tile.querySelector('small');
+          const select = tile.querySelector('.clip-select');
+          const speedInput = tile.querySelector('.clip-speed');
+          speedInput.addEventListener('pointerdown', event => event.stopPropagation());
+          speedInput.addEventListener('click', event => event.stopPropagation());
+          speedInput.addEventListener('change', () => {
+            const speed = Number(speedInput.value);
+            if (!Number.isFinite(speed) || speed < .25 || speed > 4) {
+              speedInput.value = String(entry.speed);
+              compositorMessage('Clip speed must be between 0.25× and 4×.', true);
+              return;
+            }
+            stopComposition();
+            clipRef.speed = speed;
+            saveTracks();
+            void refreshCompositor();
+          });
           select.addEventListener('click', () => {
             if (selectedClips.has(clipRef)) selectedClips.delete(clipRef);
             else selectedClips.add(clipRef);
@@ -2539,6 +2777,7 @@ import { createPreviewSplits } from './preview-splits.js';
           function updateLiveClip(start, duration, sourceStart, destinationTrack = trackIndex) {
             entry.start = roundTime(start);
             entry.duration = roundTime(duration);
+            entry.sourceDuration = roundTime(duration * entry.speed);
             entry.sourceStart = roundTime(sourceStart);
             entry.end = entry.start + entry.duration;
             entry.track = destinationTrack;
@@ -2557,11 +2796,7 @@ import { createPreviewSplits } from './preview-splits.js';
             renderRulerTicks();
             syncCompositionPreview(true);
           }
-          const grip = document.createElement('div');
-          grip.className = 'clip-grip';
-          grip.tabIndex = 0;
-          grip.setAttribute('role', 'button');
-          grip.setAttribute('aria-label', `Move ${id}; arrow keys change time or track`);
+          const grip = tile.querySelector('.clip-grip');
           const moveClipWithKeyboard = event => {
             const moving = selectedClips.has(clipRef) ?
               compositionItems.filter(value => selectedClips.has(value.clipRef)) : [entry];
@@ -2825,35 +3060,31 @@ import { createPreviewSplits } from './preview-splits.js';
           });
           compactTile.addEventListener('pointerdown', startClipDrag);
           function makeTrimHandle(edge) {
-            const handle = document.createElement('div');
-            handle.className = `clip-trim ${edge}`;
-            handle.tabIndex = 0;
-            handle.setAttribute('role', 'slider');
-            handle.setAttribute('aria-label', `${edge === 'left' ? 'Trim start' : 'Trim end'} of ${id}`);
-            handle.title = edge === 'left' ? 'Trim clip start' : 'Trim clip end';
+            const handle = tile.querySelector(`.clip-trim.${edge}`);
+            const minimumDuration = Math.max(.1, .1 / entry.speed);
             const original = { start: clip.start, sourceStart: entry.sourceStart,
               duration: entry.duration, end: clip.start + entry.duration };
             handle.setAttribute('aria-valuemin', String(edge === 'left' ?
-              (item.type === 'video' ? Math.max(0, original.start - original.sourceStart) :
-                Math.max(0, original.end - 3600)) : original.start + .1));
-            handle.setAttribute('aria-valuemax', String(edge === 'left' ? original.end - .1 :
-              original.start + (item.type === 'video' ? item.duration - original.sourceStart : 3600)));
+              (item.type === 'video' ? Math.max(0, original.start - original.sourceStart / entry.speed) :
+                Math.max(0, original.end - 3600 / entry.speed)) : original.start + minimumDuration));
+            handle.setAttribute('aria-valuemax', String(edge === 'left' ? original.end - minimumDuration :
+              original.start + (item.type === 'video' ? item.duration - original.sourceStart : 3600) / entry.speed));
             function applyDelta(delta) {
               let start = original.start;
               let sourceStart = original.sourceStart;
               let duration = original.duration;
               if (edge === 'left') {
                 const minimum = item.type === 'video' ?
-                  Math.max(0, original.start - original.sourceStart) :
-                  Math.max(0, original.end - 3600);
-                start = Math.max(minimum, Math.min(original.end - .1,
+                  Math.max(0, original.start - original.sourceStart / entry.speed) :
+                  Math.max(0, original.end - 3600 / entry.speed);
+                start = Math.max(minimum, Math.min(original.end - minimumDuration,
                   snappedTime(original.start + delta, entry)));
                 duration = original.end - start;
-                if (item.type === 'video') sourceStart += start - original.start;
+                if (item.type === 'video') sourceStart += (start - original.start) * entry.speed;
               } else {
                 const maximum = original.start + (item.type === 'video' ?
-                  item.duration - original.sourceStart : 3600);
-                const end = Math.max(original.start + .1, Math.min(maximum,
+                  item.duration - original.sourceStart : 3600) / entry.speed;
+                const end = Math.max(original.start + minimumDuration, Math.min(maximum,
                   snappedTime(original.end + delta, entry)));
                 duration = end - original.start;
               }
@@ -2863,7 +3094,7 @@ import { createPreviewSplits } from './preview-splits.js';
             }
             function commit() {
               Object.assign(clipRef, { start: entry.start,
-                sourceStart: entry.sourceStart, duration: entry.duration });
+                sourceStart: entry.sourceStart, duration: entry.sourceDuration });
               saveTracks();
               void refreshCompositor();
             }
@@ -2908,24 +3139,16 @@ import { createPreviewSplits } from './preview-splits.js';
             handle.setAttribute('aria-valuenow', (edge === 'left' ? original.start : original.end).toFixed(2));
             return handle;
           }
-          const leftTrim = makeTrimHandle('left');
-          const rightTrim = makeTrimHandle('right');
-          const remove = document.createElement('button');
-          remove.type = 'button';
-          remove.textContent = '×';
-          remove.setAttribute('aria-label', `Remove ${id} from track ${trackIndex + 1}`);
+          makeTrimHandle('left');
+          makeTrimHandle('right');
+          const remove = tile.querySelector('.clip-remove');
           remove.addEventListener('click', () => {
             tracks[trackIndex].splice(clipIndex, 1);
             saveTracks();
             void refreshCompositor();
           });
-          tile.append(thumbnail, name, length, grip, leftTrim, rightTrim, select, remove);
-          lane.append(tile, compactTile);
         });
-        row.append(headingWrap, lane);
-        trackContent.append(row);
       });
-      trackContent.append(bottomAddTrack);
       updatePlayheadExtent();
       syncTrackSelection();
       syncTrackModes();
@@ -2933,6 +3156,7 @@ import { createPreviewSplits } from './preview-splits.js';
       visibleItem = null;
       compositionScrubber.max = String(compositionDuration);
       setCompositionTime(session.playheadSeconds);
+      syncSelection();
       previewSplits.refreshSources();
       if (animatedRows.length) {
         void trackContent.offsetHeight;
@@ -3913,9 +4137,10 @@ import { createPreviewSplits } from './preview-splits.js';
       }
       if (params.has('tr')) {
         const fromUrl = params.get('tr').split('|').map(track => track ? track.split(',').map(value => {
-          const match = value.match(/^([a-zA-Z0-9_-]{1,64})@(\d+(?:\.\d+)?)(?:~(\d+(?:\.\d+)?)~(\d+(?:\.\d+)?))?$/);
+          const match = value.match(/^([a-zA-Z0-9_-]{1,64})@(\d+(?:\.\d+)?)(?:~(\d+(?:\.\d+)?)~(\d+(?:\.\d+)?)(?:~(\d+(?:\.\d+)?))?)?$/);
           return match ? { id: match[1], start: Number(match[2]),
-            ...(match[3] === undefined ? {} : { sourceStart: Number(match[3]), duration: Number(match[4]) }) } : null;
+            ...(match[3] === undefined ? {} : { sourceStart: Number(match[3]), duration: Number(match[4]) }),
+            ...(match[5] === undefined ? {} : { speed: Number(match[5]) }) } : null;
         }) : []);
         if (validTracks(fromUrl)) {
           tracks = fromUrl;

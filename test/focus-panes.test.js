@@ -15,6 +15,7 @@ function paneHarness(initialSize) {
   const context = vm.createContext({
     previousPaneSize: null, syncingFromResize: false, focusThreshold: 16,
     switchingByDivider: false, draggingDivider: false, trackFocusThreshold: 80,
+    pipTimelineThreshold: 90,
     document: { body: { classList: {
       contains: name => classes.has(name),
       toggle: (name, active) => active ? classes.add(name) : classes.delete(name)
@@ -41,7 +42,7 @@ function paneHarness(initialSize) {
   };
 }
 
-for (const initialSize of [7, 28, 53, 100]) {
+for (const initialSize of [7, 28, 53, 92, 100]) {
   test(`focus actions restore a non-focused ${initialSize}% split across repeated switches`, () => {
     const pane = paneHarness(initialSize);
     pane.focus('timeline');
@@ -52,11 +53,11 @@ for (const initialSize of [7, 28, 53, 100]) {
     pane.focus('timeline');
     assert.equal(pane.size(), 100);
     pane.focus('restore', false);
-    assert.equal(pane.size(), initialSize > 16 && initialSize < 99 ? initialSize : 28);
+    assert.equal(pane.size(), initialSize > 16 && initialSize < 90 ? initialSize : 28);
     pane.focus('render');
     assert.equal(pane.size(), 7);
     pane.focus('restore', false);
-    assert.equal(pane.size(), initialSize > 16 && initialSize < 99 ? initialSize : 28);
+    assert.equal(pane.size(), initialSize > 16 && initialSize < 90 ? initialSize : 28);
   });
 }
 
@@ -84,7 +85,7 @@ test('all focus aliases reach the pane actions and timeline has no CSS focus ove
 });
 
 test('restore forces a fresh collapsed or timeline-focused pane open', () => {
-  for (const size of [7, 16, 28, 99, 100]) {
+  for (const size of [7, 16, 28, 90, 99, 100]) {
     const pane = paneHarness(size);
     pane.focus('restore', false);
     assert.equal(pane.size(), 28);

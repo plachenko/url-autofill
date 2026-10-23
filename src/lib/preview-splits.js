@@ -1,10 +1,11 @@
 import { previewEntryForSource, previewSourceTime } from './preview-sources.js';
+import { loopPositionAtElapsed } from './loop-range.js';
 
 const storageKey = 'urlAutofill.previewSplits.v1';
 const maxViews = 8;
 
 export function createPreviewSplits({ layout, verticalButton, horizontalButton,
-  getSnapshot, resolveImage, onLayoutChange = () => {} }) {
+  getSnapshot, resolveImage, onLayoutChange = () => {}, onLoopToggle = () => {} }) {
   let primary = layout.querySelector('[data-preview-primary]');
   const views = new Set([primary]);
   const viewState = new WeakMap();
@@ -14,6 +15,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   let restored = false;
   let dropTarget = null;
   let primaryOverride = null;
+  let previousLoopMode = null;
   const dropHighlight = document.createElement('div');
   dropHighlight.className = 'preview-drop-highlight';
   dropHighlight.setAttribute('aria-hidden', 'true');
@@ -110,6 +112,21 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     move.title = 'Drag to move this preview onto another panel';
     move.setAttribute('aria-label', 'Drag to move preview panel');
     move.addEventListener('pointerdown', event => dragPanel(event, view));
+    const loopToggle = document.createElement('button');
+    loopToggle.type = 'button';
+    loopToggle.className = 'preview-loop-toggle';
+    loopToggle.addEventListener('click', event => {
+      event.stopPropagation();
+      const state = viewState.get(view);
+      if (state?.clipFinished && getSnapshot().loopMode === 'one-shot') {
+        state.clipStartedAt = performance.now();
+        state.pausedAt = 0;
+        state.clipFinished = false;
+        sync(true);
+        return;
+      }
+      onLoopToggle();
+    });
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'preview-close';
@@ -117,13 +134,13 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     close.title = 'Close this preview panel';
     close.setAttribute('aria-label', 'Close preview panel');
     close.addEventListener('click', () => closeView(view));
-    controls.append(move, close);
+    controls.append(move, loopToggle, close);
     view.append(controls);
   }
 
   function sourceOptions(select, requestedSource, droppedImage = null) {
     const { tracks, activeTrack } = getSnapshot();
-    const options = [new Option('Selected clip', 'selected')];
+    const options = [new Option('Timeline loop / selected clip', 'selected')];
     if (droppedImage) options.push(new Option(droppedImage.label, 'dropped-image'));
     tracks.forEach((track, trackIndex) => {
       options.push(new Option(`Track ${trackIndex + 1}`, `track:${trackIndex}`));
@@ -196,6 +213,7 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
     select.addEventListener('change', () => {
       const state = viewState.get(view);
       state.clipStartedAt = performance.now();
+      state.pausedAt = 0;
       state.clipRef = null;
       state.droppedImageFailed = false;
       state.sourceRef = sourceReference(select.value, getSnapshot().tracks);
@@ -349,13 +367,25 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
   }
 
   function sync(seek = false) {
-    const { tracks, items, seconds, locked, playing, selectedClips, trackModes } = getSnapshot();
+    const { tracks, items, seconds, loopSeconds, locked, loopPaused, playing,
+      loopMode, loopFinished, playbackDirection, selectedClips, trackModes } = getSnapshot();
+    if (loopMode !== previousLoopMode) {
+      previousLoopMode = loopMode;
+      for (const view of views) {
+        const state = viewState.get(view);
+        if (!state) continue;
+        state.clipStartedAt = performance.now();
+        state.pausedAt = loopPaused ? state.clipStartedAt : 0;
+        state.clipFinished = false;
+      }
+    }
     let needsLoop = false;
     for (const view of views) {
       if (view === primary) continue;
       const state = viewState.get(view);
       const source = state.select.value;
       if (source === 'dropped-image' && state.droppedImage) {
+        view.classList.remove('is-looping');
         if (state.droppedImage.type === 'video') {
           if (state.video.src !== state.droppedImage.src) state.video.src = state.droppedImage.src;
           state.video.loop = true;
@@ -374,11 +404,14 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
         state.empty.hidden = !state.droppedImageFailed;
         continue;
       }
-      const entry = previewEntryForSource(source, tracks, items, seconds, selectedClips, trackModes);
+      const loopView = source === 'selected' && !locked && Number.isFinite(loopSeconds);
+      const entry = previewEntryForSource(source, tracks, items, seconds, selectedClips,
+        trackModes, loopView ? loopSeconds : null);
       const clipRef = entry?.clipRef || null;
       if (clipRef !== state.clipRef) {
         state.clipRef = clipRef;
         state.clipStartedAt = performance.now();
+        state.pausedAt = loopPaused ? state.clipStartedAt : 0;
         state.image.removeAttribute('src');
         state.video.pause();
         state.video.removeAttribute('src');
@@ -388,12 +421,31 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
         }
       }
       const independentClip = (source.startsWith('clip:') || source === 'selected') && !locked;
-      if (independentClip && entry) needsLoop = true;
-      const elapsed = (performance.now() - state.clipStartedAt) / 1000;
-      const previewTime = previewSourceTime(source, entry, seconds, locked, elapsed);
+      view.classList.toggle('is-looping', Boolean(loopView || (independentClip && entry)));
+      if (loopPaused && !state.pausedAt) state.pausedAt = performance.now();
+      else if (!loopPaused && state.pausedAt) {
+        state.clipStartedAt += performance.now() - state.pausedAt;
+        state.pausedAt = 0;
+      }
+      const elapsed = ((state.pausedAt || performance.now()) - state.clipStartedAt) / 1000;
+      const clipPosition = independentClip && entry && !loopView
+        ? loopPositionAtElapsed(elapsed, entry.start, entry.end, loopMode) : null;
+      state.clipFinished = Boolean(clipPosition?.finished);
+      const loopToggle = view.querySelector('.preview-loop-toggle');
+      if (loopToggle) {
+        loopToggle.textContent = loopPaused || state.clipFinished || (loopView && loopFinished) ? '▶' : '■';
+        loopToggle.title = state.clipFinished || (loopView && loopFinished)
+          ? 'Replay one shot' : loopPaused ? 'Resume loop' : 'Stop loop';
+        loopToggle.setAttribute('aria-label', loopToggle.title);
+      }
+      if (independentClip && entry && !loopView && !loopPaused && !state.clipFinished)
+        needsLoop = true;
+      const previewTime = previewSourceTime(source, entry, seconds, locked, elapsed,
+        loopView ? loopSeconds : null, loopMode);
       const visible = previewTime !== null;
       if (state.empty.hidden !== visible) state.empty.hidden = visible;
-      const emptyMessage = entry ? 'Move the cursor onto this clip to preview it.'
+      const emptyMessage = loopView ? 'No clip at the loop cursor.'
+        : entry ? 'Move the cursor onto this clip to preview it.'
         : source === 'selected' ? 'Select a clip on the timeline to preview it.'
           : 'No clip at the cursor on this track.';
       if (state.empty.textContent !== emptyMessage) state.empty.textContent = emptyMessage;
@@ -409,10 +461,18 @@ export function createPreviewSplits({ layout, verticalButton, horizontalButton,
       video.loop = false;
       video.controls = false;
       if (video.readyState < 1) continue;
-      const target = (entry.item.sourceOffset || 0) + entry.sourceStart + previewTime - entry.start;
-      if (seek || Math.abs(video.currentTime - target) > (independentClip ? .2 : .08))
+      const target = (entry.item.sourceOffset || 0) + entry.sourceStart +
+        (previewTime - entry.start) * (entry.speed || 1);
+      video.playbackRate = entry.speed || 1;
+      const reverse = independentClip && !loopView
+        ? clipPosition?.direction < 0 : playbackDirection < 0;
+      if (!video.seeking && (seek || Math.abs(video.currentTime - target) >
+          (reverse ? .015 : independentClip && !loopView ? .2 : .08)))
         video.currentTime = Math.max(0, Math.min((entry.item.sourceOffset || 0) + entry.item.duration, target));
-      if (independentClip || (playing && !locked)) {
+      const forward = independentClip && !loopView
+        ? !loopPaused && !state.clipFinished && clipPosition.direction > 0
+        : playing && !locked && !loopPaused && playbackDirection > 0;
+      if (forward) {
         if (video.paused) void video.play().catch(() => {});
       } else video.pause();
     }

@@ -1,5 +1,6 @@
 <script>
   import TimelineControls from "./TimelineControls.svelte";
+  import TimelineTrackRows from "./TimelineTrackRows.svelte";
   import WebSocketPanel from "./WebSocketPanel.svelte";
   let clipsOpen = false;
   let sideTab = "clips";
@@ -134,9 +135,7 @@
       </div>
     </div>
     <div id="track-list" aria-label="Composition tracks">
-      <div id="track-content">
-        <button id="add-track-bottom" type="button">+ Add track</button>
-      </div>
+      <TimelineTrackRows />
     </div>
   </div>
 </section>

@@ -22,5 +22,5 @@ export function audibleCompositionItems(items, seconds, modes = []) {
 export function compositionAudioTime(entry, seconds) {
   const sourceOffset = entry.item.sourceOffset || 0;
   return Math.max(sourceOffset, Math.min(sourceOffset + entry.item.duration,
-    sourceOffset + entry.sourceStart + seconds - entry.start));
+    sourceOffset + entry.sourceStart + (seconds - entry.start) * (entry.speed || 1)));
 }

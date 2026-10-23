@@ -23,6 +23,13 @@ export function initialPipRect(viewport) {
     top: viewport.height - height - 16, width, height }, viewport);
 }
 
+export function pipRectAtPoint(rect, point, viewport) {
+  return clampPipRect({ ...rect,
+    left: point.x - rect.width / 2,
+    top: point.y - rect.height / 2
+  }, viewport);
+}
+
 export function movePipRect(rect, dx, dy, viewport) {
   return clampPipRect({ ...rect, left: rect.left + dx, top: rect.top + dy }, viewport);
 }

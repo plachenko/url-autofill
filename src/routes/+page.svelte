@@ -6,8 +6,8 @@
   import Stage from "../lib/components/Stage.svelte";
   import TimelineEditor from "../lib/components/TimelineEditor.svelte";
   import PointerOverlay from "../lib/components/PointerOverlay.svelte";
-  import { clampPipRect, initialPipRect, movePipRect, pinchPipRect } from "../lib/pip-geometry.js";
-  import { dockEdgeForPip, dockEdges, timelineSizeAt } from "../lib/pip-docking.js";
+  import { clampPipRect, initialPipRect, movePipRect, pinchPipRect, pipRectAtPoint } from "../lib/pip-geometry.js";
+  import { dockEdgeForPip, dockEdges, pipTimelineThreshold, timelineSizeAt } from "../lib/pip-docking.js";
   import { initialize } from "../lib/legacy-controller.js";
   import "../app.css";
 
@@ -30,11 +30,13 @@
     timelinePane?.resize(50);
   }
 
-  function showTimelineForSize(size) {
+  function showTimelineForSize(size, pipSpawnPoint = null) {
     if (!Number.isFinite(size)) return;
     document.body.classList.toggle("timeline-tracks-expanded", size >= trackFocusThreshold);
-    const pictureInPicture = size >= 99;
-    syncPictureInPicture?.(pictureInPicture);
+    const pictureInPicture = size >= pipTimelineThreshold;
+    if (pictureInPicture && size < 100 && !draggingDivider &&
+        !document.body.classList.contains("timeline-pip")) timelinePane?.resize(100);
+    if (!draggingDivider) syncPictureInPicture?.(pictureInPicture, pipSpawnPoint);
     if (switchingByDivider) return;
     const focused = size <= focusThreshold;
     if (document.body.classList.contains("render-focus") === focused) return;
@@ -70,7 +72,8 @@
     } catch { /* Storage may be unavailable or contain an older value. */ }
     let lastPlacedRect = pipRect ? { ...pipRect } : null;
     let gesture = null;
-    let pipExitTimer = null;
+    let pipExitFrame = 0;
+    let pipExitAnimation = null;
     const savePipRect = () => {
       lastPlacedRect = { ...pipRect };
       try { localStorage.setItem(pipStorageKey, JSON.stringify(pipRect)); }
@@ -82,29 +85,43 @@
       pipPane.style.setProperty("--pip-width", `${pipRect.width}px`);
       pipPane.style.setProperty("--pip-height", `${pipRect.height}px`);
     };
-    syncPictureInPicture = (active) => {
+    syncPictureInPicture = (active, spawnPoint = null) => {
       if (!active) {
         pointers.clear();
         gesture = null;
         document.body.classList.remove("timeline-pip-dragging", "timeline-pip-dock-ready");
         document.body.removeAttribute("data-pip-dock-target");
-        if (document.body.classList.contains("timeline-pip")) {
-          document.body.classList.replace("timeline-pip", "timeline-pip-exiting");
-          clearTimeout(pipExitTimer);
-          pipExitTimer = setTimeout(() => {
-            document.body.classList.remove("timeline-pip-exiting");
-            pipExitTimer = null;
-          }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
+        if (document.body.classList.contains("timeline-pip") && !pipExitFrame) {
+          pipExitFrame = requestAnimationFrame(() => {
+            pipExitFrame = 0;
+            const from = pipPane.getBoundingClientRect();
+            document.body.classList.remove("timeline-pip");
+            const to = pipPane.getBoundingClientRect();
+            if (window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+                !from.width || !from.height || !to.width || !to.height) return;
+            const animation = pipPane.animate([
+              { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`,
+                transformOrigin: "top left", borderRadius: "10px" },
+              { transform: "none", transformOrigin: "top left", borderRadius: "0px" }
+            ], { duration: 240, easing: "cubic-bezier(.2, .8, .2, 1)" });
+            pipExitAnimation = animation;
+            animation.onfinish = () => {
+              if (pipExitAnimation === animation) pipExitAnimation = null;
+            };
+          });
         }
         return;
       }
-      clearTimeout(pipExitTimer);
-      pipExitTimer = null;
-      if (!document.body.classList.contains("timeline-pip"))
-        pipRect = lastPlacedRect ? clampPipRect(lastPlacedRect, viewport()) : initialPipRect(viewport());
-      else pipRect = clampPipRect(pipRect, viewport());
+      cancelAnimationFrame(pipExitFrame);
+      pipExitFrame = 0;
+      pipExitAnimation?.cancel();
+      pipExitAnimation = null;
+      const baseRect = document.body.classList.contains("timeline-pip") ? pipRect
+        : lastPlacedRect ? lastPlacedRect : initialPipRect(viewport());
+      pipRect = spawnPoint ? pipRectAtPoint(baseRect, spawnPoint, viewport())
+        : clampPipRect(baseRect, viewport());
+      if (spawnPoint && !draggingDivider) savePipRect();
       applyPipRect();
-      document.body.classList.remove("timeline-pip-exiting");
       document.body.classList.add("timeline-pip");
     };
     const midpoint = (first, second) => ({
@@ -219,7 +236,7 @@
       const action = event.detail.paneAction;
       if (action === "render" || action === "timeline") {
         const size = timelinePane.getSize();
-        if (!event.detail.previousFocused && size > focusThreshold && size < 99)
+        if (!event.detail.previousFocused && size > focusThreshold && size < pipTimelineThreshold)
           previousPaneSize = size;
         if (action === "timeline") {
           timelinePane.expand();
@@ -227,7 +244,7 @@
           return;
         }
       } else if (action === "restore") {
-        const size = previousPaneSize > focusThreshold && previousPaneSize < 99
+        const size = previousPaneSize > focusThreshold && previousPaneSize < pipTimelineThreshold
           ? previousPaneSize : 28;
         previousPaneSize = null;
         if (timelinePane.isCollapsed()) timelinePane.expand();
@@ -271,7 +288,11 @@
       if (event.pointerId !== resizePointer?.id) return;
       const group = resizer.parentElement.getBoundingClientRect();
       const size = timelineSizeAt({ x: event.clientX, y: event.clientY }, group, dockEdge);
-      if (size !== null) timelinePane?.resize(size);
+      if (size !== null) {
+        timelinePane?.resize(size);
+        syncPictureInPicture?.(size >= pipTimelineThreshold,
+          { x: event.clientX, y: event.clientY });
+      }
     };
     const finishResize = (event) => {
       if (event.pointerId !== resizePointer?.id) return;
@@ -279,11 +300,12 @@
         Math.hypot(event.clientX - resizePointer.x,
           event.clientY - resizePointer.y) < 5;
       const wasFocused = resizePointer.focused;
+      const releasePoint = { x: event.clientX, y: event.clientY };
       if (event.type === "pointerup" && !directClick) moveResize(event);
       resizePointer = null;
-      draggingDivider = false;
-      if (event.type !== "pointerup") return;
+      if (event.type !== "pointerup") { draggingDivider = false; return; }
       requestAnimationFrame(() => {
+        draggingDivider = false;
         if (directClick) {
           switchingByDivider = true;
           try {
@@ -299,7 +321,7 @@
           return;
         }
         const size = timelinePane?.getSize();
-        showTimelineForSize(size);
+        showTimelineForSize(size, releasePoint);
         if (size <= focusThreshold && !timelinePane?.isCollapsed())
           timelinePane?.collapse();
       });
@@ -314,7 +336,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       const towardTimeline = dockEdge === "top" || dockEdge === "left" ? axis[0] : axis[1];
-      timelinePane?.resize(Math.max(7, Math.min(99,
+      timelinePane?.resize(Math.max(7, Math.min(100,
         timelinePane.getSize() + (event.key === towardTimeline ? 2 : -2))));
     };
     resizer?.addEventListener("keydown", resizeWithKeyboard, true);
@@ -325,7 +347,9 @@
     window.addEventListener("urlAutofill:focus", syncFocus);
     initialize();
     const pipInitFrame = requestAnimationFrame(() => {
-      const active = timelinePane?.getSize() >= 99;
+      const size = timelinePane?.getSize();
+      const active = size >= pipTimelineThreshold;
+      if (active && size < 100) timelinePane?.resize(100);
       syncPictureInPicture(active);
     });
     if (!document.body.classList.contains("render-focus") &&
@@ -333,10 +357,11 @@
       document.getElementById("timeline-toggle")?.click();
     return () => {
       cancelAnimationFrame(pipInitFrame);
-      clearTimeout(pipExitTimer);
+      cancelAnimationFrame(pipExitFrame);
+      pipExitAnimation?.cancel();
       pipListeners.abort();
       syncPictureInPicture = null;
-      document.body.classList.remove("timeline-pip", "timeline-pip-exiting",
+      document.body.classList.remove("timeline-pip",
         "timeline-pip-dragging", "timeline-pip-dock-ready");
       document.body.style.removeProperty("--pip-dock-top");
       document.body.style.removeProperty("--pip-dock-left");
@@ -411,6 +436,13 @@
     </Pane>
   </PaneGroup>
   <div id="focus-seeker" aria-label="Render position">
+    <button id="focus-loop-follow" type="button" hidden
+      title="Reset the loop to the selected clip and follow it">Follow clip</button>
+    <select id="focus-loop-mode" aria-label="Loop playback mode" title="Loop playback mode" hidden>
+      <option value="repeat">Repeat</option>
+      <option value="one-shot">One shot</option>
+      <option value="ping-pong">Ping pong</option>
+    </select>
     <input id="focus-seeker-scrubber" type="range" min="0" max="0" step="0.01" value="0"
       aria-label="Render position in seconds" />
     <span id="focus-seeker-time">0.00 / 0.00s</span>

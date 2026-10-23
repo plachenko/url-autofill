@@ -1,6 +1,14 @@
 <div id="timeline-controls">
   <div class="compositor-actions">
     <button id="composition-play" type="button">Play</button>
+    <button id="loop-playback-toggle" type="button" hidden>Stop loop</button>
+    <select id="loop-playback-mode" aria-label="Loop playback mode" title="Loop playback mode" hidden>
+      <option value="repeat">Repeat</option>
+      <option value="one-shot">One shot</option>
+      <option value="ping-pong">Ping pong</option>
+    </select>
+    <button id="loop-follow-clip" type="button" hidden
+      title="Reset the loop to the selected clip and follow it">Follow clip</button>
   </div>
   <div id="seek-wrap">
     <input
@@ -25,6 +33,10 @@
     title="Split selected clips at the playhead, or the visible clip if none are selected"
     >Split</button
   >
+  <label id="selected-clip-speed-control" hidden>
+    Speed <input id="selected-clip-speed" type="number" min="0.25" max="4"
+      step="0.01" value="1" aria-label="Selected clip playback speed" /> ×
+  </label>
   <button
     id="snap-toggle"
     type="button"

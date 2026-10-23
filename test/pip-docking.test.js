@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dockEdgeAt, dockEdgeForPip, timelineSizeAt } from '../src/lib/pip-docking.js';
+import { dockEdgeAt, dockEdgeForPip, pipTimelineThreshold, timelineSizeAt } from '../src/lib/pip-docking.js';
 
 const bounds = { left: 0, top: 50, right: 800, bottom: 600, width: 800, height: 550 };
 
@@ -29,4 +29,10 @@ test('dragging the divider sizes the timeline on the opposite side of the previe
   assert.equal(timelineSizeAt({ x: 200, y: 490 }, bounds, 'bottom'), 80);
   assert.equal(timelineSizeAt({ x: 160, y: 300 }, bounds, 'left'), 80);
   assert.equal(timelineSizeAt({ x: 640, y: 300 }, bounds, 'right'), 80);
+  assert.equal(pipTimelineThreshold, 90);
+  assert.equal(timelineSizeAt({ x: 80, y: 300 }, bounds, 'left'), 100);
+  assert.equal(timelineSizeAt({ x: 720, y: 300 }, bounds, 'right'), 100);
+  assert.ok(timelineSizeAt({ x: 81, y: 300 }, bounds, 'left') < 100);
+  assert.equal(timelineSizeAt({ x: 39, y: 300 }, bounds, 'left'), 100);
+  assert.equal(timelineSizeAt({ x: 761, y: 300 }, bounds, 'right'), 100);
 });

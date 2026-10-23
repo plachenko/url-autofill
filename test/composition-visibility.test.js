@@ -53,4 +53,8 @@ test('track audio follows trimmed clips and archive source offsets', () => {
   assert.equal(compositionAudioTime(entry, 3), 6);
   assert.equal(compositionAudioTime(entry, 5), 8);
   assert.equal(compositionAudioTime(entry, 20), 16);
+  entry.speed = 2;
+  assert.equal(compositionAudioTime(entry, 5), 10);
+  entry.speed = .5;
+  assert.equal(compositionAudioTime(entry, 5), 7);
 });

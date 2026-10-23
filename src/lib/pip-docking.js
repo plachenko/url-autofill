@@ -1,4 +1,5 @@
 export const dockEdges = ['top', 'right', 'bottom', 'left'];
+export const pipTimelineThreshold = 90;
 
 export function dockEdgeAt(point, bounds, threshold = 32) {
   const distances = [
@@ -34,5 +35,6 @@ export function timelineSizeAt(point, bounds, edge) {
     : edge === 'bottom' ? point.y - bounds.top
     : edge === 'left' ? bounds.right - point.x
     : point.x - bounds.left;
-  return Math.max(0, Math.min(100, distance / length * 100));
+  const size = Math.max(0, Math.min(100, distance / length * 100));
+  return size >= pipTimelineThreshold ? 100 : size;
 }
